@@ -54,6 +54,38 @@ final class ViewModelTests: XCTestCase {
         XCTAssertTrue(model.errors(for: valid.id).isEmpty)
     }
 
+    func testErrorsUseCanonicalShortcutIdentityAndIgnoreInactiveTrailingDraft() {
+        let first = MacroDefinition(
+            id: UUID(),
+            isEnabled: true,
+            shortcut: .init(key: .letter("A"), modifiers: .command),
+            text: "x",
+            trailingKey: nil
+        )
+        let second = MacroDefinition(
+            id: UUID(),
+            isEnabled: true,
+            shortcut: .init(key: .keyCode(0), modifiers: .command),
+            text: "y",
+            trailingKey: nil
+        )
+        let inactive = MacroDefinition(
+            id: UUID(),
+            isEnabled: false,
+            shortcut: .init(key: .empty, modifiers: []),
+            text: "",
+            trailingKey: .custom(keyCode: nil, modifiers: [])
+        )
+        let model = SettingsViewModel(
+            settings: .init(macros: [first, second, inactive]),
+            validator: .init()
+        )
+
+        XCTAssertTrue(model.errors(for: first.id).contains("활성 단축키가 중복됩니다"))
+        XCTAssertTrue(model.errors(for: second.id).contains("활성 단축키가 중복됩니다"))
+        XCTAssertTrue(model.errors(for: inactive.id).isEmpty)
+    }
+
     func testStatusSynchronizationDoesNotOverwriteDirtyDraft() {
         let original = Fixtures.settings(text: "저장된 값")
         let app = AppController(

@@ -61,6 +61,28 @@ final class SettingsValidatorTests: XCTestCase {
         XCTAssertThrowsError(try validator.validate(.init(macros: [valid.withText("")])))
     }
 
+    func testDuplicateShortcutUsesCanonicalRegistrationIdentity() {
+        let values = ["a", "A"].map { letter in
+            MacroDefinition(
+                id: UUID(),
+                isEnabled: true,
+                shortcut: .init(key: .letter(letter), modifiers: .command),
+                text: "x",
+                trailingKey: nil
+            )
+        } + [
+            MacroDefinition(
+                id: UUID(),
+                isEnabled: true,
+                shortcut: .init(key: .keyCode(0), modifiers: .command),
+                text: "x",
+                trailingKey: nil
+            )
+        ]
+
+        XCTAssertThrowsError(try validator.validate(.init(macros: values)))
+    }
+
     func testShortcutMatrixAndDuplicates() {
         XCTAssertThrowsError(
             try validator.validateShortcut(.init(key: .letter("a"), modifiers: []))

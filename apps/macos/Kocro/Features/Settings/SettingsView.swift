@@ -67,7 +67,7 @@ final class SettingsViewModel: ObservableObject {
                 errors.append("단축키를 수정하세요")
             }
         }
-        if let trailingKey = macro.trailingKey {
+        if macro.isEnabled, let trailingKey = macro.trailingKey {
             do {
                 try validator.validateTrailing(trailingKey)
             } catch {
@@ -78,7 +78,10 @@ final class SettingsViewModel: ObservableObject {
             errors.append("항목 ID가 중복됩니다")
         }
         if macro.isEnabled,
-           settings.macros.filter({ $0.isEnabled && $0.shortcut == macro.shortcut }).count > 1 {
+           let identity = macro.shortcut.registrationIdentity,
+           settings.macros.filter({
+               $0.isEnabled && $0.shortcut.registrationIdentity == identity
+           }).count > 1 {
             errors.append("활성 단축키가 중복됩니다")
         }
         if let registrationState = registration[id], registrationState != .registered {

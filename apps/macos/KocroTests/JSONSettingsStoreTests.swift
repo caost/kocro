@@ -65,6 +65,34 @@ final class JSONSettingsStoreTests: XCTestCase {
         ) {
             XCTAssertTrue($0 is StoreError)
         }
+
+        let duplicateRepresentations = AppSettings(
+            macros: [
+                MacroDefinition(
+                    id: UUID(),
+                    isEnabled: true,
+                    shortcut: .init(key: .letter("A"), modifiers: .command),
+                    text: "x",
+                    trailingKey: nil
+                ),
+                MacroDefinition(
+                    id: UUID(),
+                    isEnabled: true,
+                    shortcut: .init(key: .keyCode(0), modifiers: .command),
+                    text: "y",
+                    trailingKey: nil
+                ),
+            ]
+        )
+        let duplicateData = try JSONEncoder().encode(duplicateRepresentations)
+        XCTAssertThrowsError(
+            try JSONSettingsStore(
+                file: MemorySettingsFile(contents: duplicateData),
+                validator: .init()
+            ).load()
+        ) {
+            XCTAssertTrue($0 is StoreError)
+        }
     }
 
     func testValidationAndWriteFailuresLeaveExistingBytesUnchanged() throws {

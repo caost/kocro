@@ -55,6 +55,44 @@ struct ShortcutDefinition: Codable, Hashable, Sendable {
         }
         return prefix + keyName
     }
+
+    var registrationIdentity: ShortcutRegistrationIdentity? {
+        let registrationKey: ShortcutRegistrationKey
+        switch key {
+        case .empty:
+            return nil
+        case .letter(let letter):
+            guard let keyCode = MacKeyCodePolicy.keyCode(forLetter: letter) else {
+                return nil
+            }
+            registrationKey = .carbon(keyCode)
+        case .keyCode(let keyCode):
+            registrationKey = .carbon(keyCode)
+        case .function(let number) where (1...20).contains(number):
+            guard let keyCode = MacKeyCodePolicy.keyCode(forFunction: number) else {
+                return nil
+            }
+            registrationKey = .carbon(keyCode)
+        case .function(let number) where (21...24).contains(number):
+            registrationKey = .hidFunction(number)
+        case .function:
+            return nil
+        }
+        return ShortcutRegistrationIdentity(
+            key: registrationKey,
+            modifiers: modifiers
+        )
+    }
+}
+
+enum ShortcutRegistrationKey: Hashable, Sendable {
+    case carbon(UInt16)
+    case hidFunction(Int)
+}
+
+struct ShortcutRegistrationIdentity: Hashable, Sendable {
+    let key: ShortcutRegistrationKey
+    let modifiers: ModifierSet
 }
 
 enum TrailingKey: Codable, Hashable, Sendable {

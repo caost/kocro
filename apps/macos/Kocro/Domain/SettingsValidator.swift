@@ -16,7 +16,7 @@ enum ValidationError: Error {
 struct SettingsValidator {
     func validate(_ settings: AppSettings) throws -> AppSettings {
         var identifiers = Set<UUID>()
-        var activeShortcuts = Set<ShortcutDefinition>()
+        var activeShortcuts = Set<ShortcutRegistrationIdentity>()
 
         for macro in settings.macros {
             guard identifiers.insert(macro.id).inserted else {
@@ -35,7 +35,8 @@ struct SettingsValidator {
                 throw ValidationError.emptyText
             }
             try validateShortcut(macro.shortcut)
-            guard activeShortcuts.insert(macro.shortcut).inserted else {
+            guard let identity = macro.shortcut.registrationIdentity,
+                  activeShortcuts.insert(identity).inserted else {
                 throw ValidationError.duplicateShortcut
             }
         }
