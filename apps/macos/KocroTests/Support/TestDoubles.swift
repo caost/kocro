@@ -211,6 +211,7 @@ final class PermissionAPISpy: PermissionAPI {
     var input: Bool
     private(set) var accessibilityChecks: [Bool] = []
     private(set) var accessibilityPrompts = 0
+    private(set) var currentAccessibilityChecks = 0
     private(set) var inputChecks = 0
     private(set) var inputRequests = 0
     private(set) var openedSettings: [PrivacyKind] = []
@@ -226,6 +227,11 @@ final class PermissionAPISpy: PermissionAPI {
         return accessibility
     }
 
+    func currentAccessibilityTrusted() -> Bool {
+        currentAccessibilityChecks += 1
+        return accessibility
+    }
+
     func inputMonitoringGranted() -> Bool {
         inputChecks += 1
         return input
@@ -237,5 +243,304 @@ final class PermissionAPISpy: PermissionAPI {
 
     func openSettings(_ kind: PrivacyKind) {
         openedSettings.append(kind)
+    }
+}
+
+final class EventAPISpy: EventAPI {
+    typealias Event = Kocro.EventKind
+
+    private let lock = NSLock()
+    private var creationIndex = 0
+    private var createdStorage: [Kocro.EventKind] = []
+    private var postedStorage: [Kocro.EventKind] = []
+    var failAt: Int?
+
+    init(failAt: Int? = nil) {
+        self.failAt = failAt
+    }
+
+    var created: [Kocro.EventKind] { locked { createdStorage } }
+    var posted: [Kocro.EventKind] { locked { postedStorage } }
+
+    func create(_ kind: Kocro.EventKind) -> Kocro.EventKind? {
+        locked {
+            creationIndex += 1
+            createdStorage.append(kind)
+            return creationIndex == failAt ? nil : kind
+        }
+    }
+
+    func post(_ event: Kocro.EventKind) {
+        locked { postedStorage.append(event) }
+    }
+
+    private func locked<T>(_ body: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
+    }
+}
+
+final class RecordingBatchPoster: BatchPosting {
+    private let lock = NSLock()
+    private let error: Error?
+    private var requestsStorage: [ExecutionRequest] = []
+    private var currentConcurrent = 0
+    private var maximumConcurrentStorage = 0
+
+    init(error: Error? = nil) {
+        self.error = error
+    }
+
+    var requests: [ExecutionRequest] { locked { requestsStorage } }
+    var texts: [String] { requests.map(\.text) }
+    var maximumConcurrent: Int { locked { maximumConcurrentStorage } }
+
+    func buildAndPost(_ request: ExecutionRequest) throws {
+        locked {
+            currentConcurrent += 1
+            maximumConcurrentStorage = max(maximumConcurrentStorage, currentConcurrent)
+            requestsStorage.append(request)
+        }
+        defer { locked { currentConcurrent -= 1 } }
+        if let error { throw error }
+    }
+
+    @discardableResult
+    private func locked<T>(_ body: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
+    }
+}
+
+final class BlockingPoster: BatchPosting {
+    private let firstEntered = DispatchSemaphore(value: 0)
+    private let releaseFirst = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var invocationCount = 0
+    private var textsStorage: [String] = []
+    private var currentConcurrent = 0
+    private var maximumConcurrentStorage = 0
+
+    var texts: [String] { locked { textsStorage } }
+    var maximumConcurrent: Int { locked { maximumConcurrentStorage } }
+
+    func buildAndPost(_ request: ExecutionRequest) throws {
+        let isFirst = locked {
+            invocationCount += 1
+            currentConcurrent += 1
+            maximumConcurrentStorage = max(maximumConcurrentStorage, currentConcurrent)
+            textsStorage.append(request.text)
+            return invocationCount == 1
+        }
+        defer { locked { currentConcurrent -= 1 } }
+
+        if isFirst {
+            firstEntered.signal()
+            releaseFirst.wait()
+        }
+    }
+
+    func waitUntilFirstRequestEnters() -> Bool {
+        firstEntered.wait(timeout: .now() + 2) == .success
+    }
+
+    func releaseFirstRequest() {
+        releaseFirst.signal()
+    }
+
+    @discardableResult
+    private func locked<T>(_ body: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
+    }
+}
+
+final class StoreSpy: SettingsStoring {
+    let loadResult: Result<AppSettings, Error>
+    var saveError: Error?
+    var onSave: (() -> Void)?
+    private(set) var savedValues: [AppSettings] = []
+
+    init(loadResult: Result<AppSettings, Error>) {
+        self.loadResult = loadResult
+    }
+
+    func load() throws -> AppSettings {
+        try loadResult.get()
+    }
+
+    func save(_ value: AppSettings) throws {
+        onSave?()
+        if let saveError { throw saveError }
+        savedValues.append(value)
+    }
+}
+
+final class ShortcutSpy: ShortcutCoordinating, @unchecked Sendable {
+    private let lock = NSLock()
+    private var statesStorage: [UUID: RegistrationState]
+    private var triggerStorage: ((UUID, ContinuousClock.Instant) -> Void)?
+    private var replaceCallsStorage: [[MacroDefinition]] = []
+
+    init(states: [UUID: RegistrationState] = [:]) {
+        statesStorage = states
+    }
+
+    var states: [UUID: RegistrationState] {
+        get { locked { statesStorage } }
+        set { locked { statesStorage = newValue } }
+    }
+    var onTrigger: ((UUID, ContinuousClock.Instant) -> Void)? {
+        get { locked { triggerStorage } }
+        set { locked { triggerStorage = newValue } }
+    }
+    var replaceCalls: [[MacroDefinition]] { locked { replaceCallsStorage } }
+
+    func replace(
+        with macros: [MacroDefinition],
+        installSnapshots: ([UUID: RegistrationState]) -> Void
+    ) -> [UUID: RegistrationState] {
+        let result = locked {
+            replaceCallsStorage.append(macros)
+            if statesStorage.isEmpty {
+                return Dictionary(
+                    uniqueKeysWithValues: macros.filter(\.isEnabled).map {
+                        ($0.id, RegistrationState.registered)
+                    }
+                )
+            }
+            return statesStorage
+        }
+        installSnapshots(result)
+        return result
+    }
+
+    func shutdown() {}
+
+    func trigger(_ id: UUID) {
+        let trigger = locked { triggerStorage }
+        trigger?(id, .now)
+    }
+
+    @discardableResult
+    private func locked<T>(_ body: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
+    }
+}
+
+final class PermissionSpy: PermissionServing, @unchecked Sendable {
+    private let lock = NSLock()
+    private var stateStorage: PermissionState
+    private var directAccessibility: Bool
+    private var refreshedStateStorage: PermissionState?
+    private var refreshNeedsHIDStorage: [Bool] = []
+    private var currentChecksStorage = 0
+
+    init(
+        state: PermissionState = .init(accessibility: true, inputMonitoring: nil),
+        currentAccessibility: Bool = true
+    ) {
+        stateStorage = state
+        directAccessibility = currentAccessibility
+    }
+
+    var state: PermissionState { locked { stateStorage } }
+    var refreshedState: PermissionState? {
+        get { locked { refreshedStateStorage } }
+        set { locked { refreshedStateStorage = newValue } }
+    }
+    var refreshNeedsHID: [Bool] { locked { refreshNeedsHIDStorage } }
+    var currentAccessibilityChecks: Int { locked { currentChecksStorage } }
+
+    @discardableResult
+    func refresh(needsHID: Bool) -> PermissionState {
+        locked {
+            refreshNeedsHIDStorage.append(needsHID)
+            if let refreshedStateStorage { stateStorage = refreshedStateStorage }
+            return stateStorage
+        }
+    }
+
+    func requestAccessibility() {}
+    func requestInputMonitoring() {}
+    func openSettings(_ kind: PrivacyKind) {}
+
+    func currentAccessibility() -> Bool {
+        locked {
+            currentChecksStorage += 1
+            return directAccessibility
+        }
+    }
+
+    @discardableResult
+    private func locked<T>(_ body: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
+    }
+}
+
+final class QueueSpy: ExecutionQueueing, @unchecked Sendable {
+    struct Rejection {
+        let id: UUID
+        let shortcut: String
+        let kind: ExecutionResultKind
+    }
+
+    private let lock = NSLock()
+    private var requestsStorage: [ExecutionRequest] = []
+    private var rejectionsStorage: [Rejection] = []
+    private var lastResultStorage: ExecutionResult?
+    private var idleStorage = true
+    private var resultHandler: ((ExecutionResult) -> Void)?
+    private var idleHandler: ((Bool) -> Void)?
+
+    var requests: [ExecutionRequest] { locked { requestsStorage } }
+    var rejections: [Rejection] { locked { rejectionsStorage } }
+    var lastResult: ExecutionResult? { locked { lastResultStorage } }
+    var isIdle: Bool { locked { idleStorage } }
+    var onResult: ((ExecutionResult) -> Void)? {
+        get { locked { resultHandler } }
+        set { locked { resultHandler = newValue } }
+    }
+    var onIdleChange: ((Bool) -> Void)? {
+        get { locked { idleHandler } }
+        set { locked { idleHandler = newValue } }
+    }
+
+    func enqueue(_ request: ExecutionRequest) {
+        locked { requestsStorage.append(request) }
+    }
+
+    func reject(id: UUID, shortcut: String, kind: ExecutionResultKind) {
+        locked { rejectionsStorage.append(.init(id: id, shortcut: shortcut, kind: kind)) }
+    }
+
+    func emitResult(_ result: ExecutionResult) {
+        let handler = locked {
+            lastResultStorage = result
+            return resultHandler
+        }
+        handler?(result)
+    }
+
+    func emitIdle(_ idle: Bool) {
+        let handler = locked {
+            idleStorage = idle
+            return idleHandler
+        }
+        handler?(idle)
+    }
+
+    @discardableResult
+    private func locked<T>(_ body: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
     }
 }

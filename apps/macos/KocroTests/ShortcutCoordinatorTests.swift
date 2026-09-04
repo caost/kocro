@@ -94,6 +94,24 @@ final class ShortcutCoordinatorTests: XCTestCase {
         XCTAssertEqual(states[macros[2].id], .registered)
     }
 
+    func testSnapshotInstallerReceivesFinalRegistrationStates() {
+        let carbon = CarbonSpy(failingRegistration: 2)
+        let coordinator = ShortcutCoordinator(
+            carbon: carbon,
+            hid: HIDSpy(permission: true, starts: true)
+        )
+        let macros = [Fixtures.carbon(13), Fixtures.carbon(14)]
+        var installed: [UUID: RegistrationState]?
+
+        let returned = coordinator.replace(with: macros) { states in
+            installed = states
+        }
+
+        XCTAssertEqual(installed, returned)
+        XCTAssertEqual(installed?[macros[0].id], .registered)
+        XCTAssertEqual(installed?[macros[1].id], .registrationFailed)
+    }
+
     func testHIDPermissionAndStartFailuresLeaveCarbonRegistered() {
         let cases: [(HIDSpy, RegistrationState)] = [
             (HIDSpy(permission: false, starts: true), .inputMonitoringRequired),

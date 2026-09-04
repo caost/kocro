@@ -51,7 +51,7 @@ final class ShortcutCoordinator {
 
     func replace(
         with macros: [MacroDefinition],
-        installSnapshots: () -> Void = {}
+        installSnapshots: ([UUID: RegistrationState]) -> Void = { _ in }
     ) -> [UUID: RegistrationState] {
         // Carbon lifecycle APIs are main-thread-only. Callers must not invoke
         // replacement synchronously from onTrigger; schedule it on main instead.
@@ -60,7 +60,6 @@ final class ShortcutCoordinator {
 
         carbon.unregisterAll()
         hid.stop()
-        installSnapshots()
 
         let active = macros.filter(\.isEnabled)
         var states: [UUID: RegistrationState] = [:]
@@ -109,6 +108,7 @@ final class ShortcutCoordinator {
             }
         }
 
+        installSnapshots(states)
         ingress.completeReplacement(carbonIDs: carbonIDs, hidFunctions: hidFunctions)
         return states
     }
@@ -122,6 +122,8 @@ final class ShortcutCoordinator {
         ingress.completeReplacement(carbonIDs: [:], hidFunctions: [:])
     }
 }
+
+extension ShortcutCoordinator: ShortcutCoordinating {}
 
 private final class ShortcutIngress: @unchecked Sendable {
     private let condition = NSCondition()

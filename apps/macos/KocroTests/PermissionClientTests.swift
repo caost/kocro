@@ -36,6 +36,17 @@ final class PermissionClientTests: XCTestCase {
         XCTAssertEqual(state.inputMonitoring, true)
     }
 
+    func testCurrentAccessibilityChecksSystemInsteadOfReturningCachedState() {
+        let api = PermissionAPISpy(accessibility: true, input: false)
+        let client = PermissionClient(api: api)
+        _ = client.refresh(needsHID: false)
+        api.accessibility = false
+
+        XCTAssertFalse(client.currentAccessibility())
+        XCTAssertEqual(api.accessibilityChecks, [false])
+        XCTAssertEqual(api.currentAccessibilityChecks, 1)
+    }
+
     func testExplicitInputMonitoringRequestDoesNotMutateCachedStateUntilRefresh() {
         let api = PermissionAPISpy(accessibility: false, input: true)
         let client = PermissionClient(api: api)

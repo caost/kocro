@@ -28,6 +28,12 @@
 		A10000000000000000000013 /* CarbonHotKeySourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000015 /* CarbonHotKeySourceTests.swift */; };
 		A10000000000000000000014 /* PermissionClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000016 /* PermissionClientTests.swift */; };
 		A10000000000000000000015 /* PermissionClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000017 /* PermissionClient.swift */; };
+		A10000000000000000000016 /* EventBatchFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000018 /* EventBatchFactory.swift */; };
+		A10000000000000000000017 /* MacroExecutionQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000019 /* MacroExecutionQueue.swift */; };
+		A10000000000000000000018 /* EventBatchFactoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001A /* EventBatchFactoryTests.swift */; };
+		A10000000000000000000019 /* MacroExecutionQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001B /* MacroExecutionQueueTests.swift */; };
+		A1000000000000000000001A /* AppController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001C /* AppController.swift */; };
+		A1000000000000000000001B /* AppControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001D /* AppControllerTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -64,6 +70,12 @@
 		A20000000000000000000015 /* CarbonHotKeySourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarbonHotKeySourceTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000016 /* PermissionClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionClientTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000017 /* PermissionClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionClient.swift; sourceTree = "<group>"; };
+		A20000000000000000000018 /* EventBatchFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventBatchFactory.swift; sourceTree = "<group>"; };
+		A20000000000000000000019 /* MacroExecutionQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacroExecutionQueue.swift; sourceTree = "<group>"; };
+		A2000000000000000000001A /* EventBatchFactoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventBatchFactoryTests.swift; sourceTree = "<group>"; };
+		A2000000000000000000001B /* MacroExecutionQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacroExecutionQueueTests.swift; sourceTree = "<group>"; };
+		A2000000000000000000001C /* AppController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppController.swift; sourceTree = "<group>"; };
+		A2000000000000000000001D /* AppControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppControllerTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -114,6 +126,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000000000000000000001 /* KocroApp.swift */,
+				A2000000000000000000001C /* AppController.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -128,6 +141,9 @@
 				A20000000000000000000011 /* HIDFunctionKeySourceTests.swift */,
 				A20000000000000000000015 /* CarbonHotKeySourceTests.swift */,
 				A20000000000000000000016 /* PermissionClientTests.swift */,
+				A2000000000000000000001A /* EventBatchFactoryTests.swift */,
+				A2000000000000000000001B /* MacroExecutionQueueTests.swift */,
+				A2000000000000000000001D /* AppControllerTests.swift */,
 				A70000000000000000000008 /* Support */,
 			);
 			path = KocroTests;
@@ -193,6 +209,8 @@
 			isa = PBXGroup;
 			children = (
 				A20000000000000000000017 /* PermissionClient.swift */,
+				A20000000000000000000018 /* EventBatchFactory.swift */,
+				A20000000000000000000019 /* MacroExecutionQueue.swift */,
 			);
 			path = Input;
 			sourceTree = "<group>";
@@ -271,8 +289,8 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		A90000000000000000000001 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001 /* KocroApp.swift in Sources */, A10000000000000000000008 /* MacroModels.swift in Sources */, A10000000000000000000009 /* SettingsValidator.swift in Sources */, A1000000000000000000000C /* SettingsStore.swift in Sources */, A1000000000000000000000D /* JSONSettingsStore.swift in Sources */, A10000000000000000000010 /* ShortcutCoordinator.swift in Sources */, A10000000000000000000011 /* CarbonHotKeySource.swift in Sources */, A10000000000000000000012 /* HIDFunctionKeySource.swift in Sources */, A10000000000000000000015 /* PermissionClient.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
-		A90000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000002 /* KocroSmokeTests.swift in Sources */, A10000000000000000000007 /* SettingsValidatorTests.swift in Sources */, A1000000000000000000000A /* JSONSettingsStoreTests.swift in Sources */, A1000000000000000000000B /* TestDoubles.swift in Sources */, A1000000000000000000000E /* ShortcutCoordinatorTests.swift in Sources */, A1000000000000000000000F /* HIDFunctionKeySourceTests.swift in Sources */, A10000000000000000000013 /* CarbonHotKeySourceTests.swift in Sources */, A10000000000000000000014 /* PermissionClientTests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
+		A90000000000000000000001 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001 /* KocroApp.swift in Sources */, A10000000000000000000008 /* MacroModels.swift in Sources */, A10000000000000000000009 /* SettingsValidator.swift in Sources */, A1000000000000000000000C /* SettingsStore.swift in Sources */, A1000000000000000000000D /* JSONSettingsStore.swift in Sources */, A10000000000000000000010 /* ShortcutCoordinator.swift in Sources */, A10000000000000000000011 /* CarbonHotKeySource.swift in Sources */, A10000000000000000000012 /* HIDFunctionKeySource.swift in Sources */, A10000000000000000000015 /* PermissionClient.swift in Sources */, A10000000000000000000016 /* EventBatchFactory.swift in Sources */, A10000000000000000000017 /* MacroExecutionQueue.swift in Sources */, A1000000000000000000001A /* AppController.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
+		A90000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000002 /* KocroSmokeTests.swift in Sources */, A10000000000000000000007 /* SettingsValidatorTests.swift in Sources */, A1000000000000000000000A /* JSONSettingsStoreTests.swift in Sources */, A1000000000000000000000B /* TestDoubles.swift in Sources */, A1000000000000000000000E /* ShortcutCoordinatorTests.swift in Sources */, A1000000000000000000000F /* HIDFunctionKeySourceTests.swift in Sources */, A10000000000000000000013 /* CarbonHotKeySourceTests.swift in Sources */, A10000000000000000000014 /* PermissionClientTests.swift in Sources */, A10000000000000000000018 /* EventBatchFactoryTests.swift in Sources */, A10000000000000000000019 /* MacroExecutionQueueTests.swift in Sources */, A1000000000000000000001B /* AppControllerTests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */

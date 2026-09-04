@@ -14,6 +14,7 @@ enum PrivacyKind: Equatable {
 
 protocol PermissionAPI: AnyObject {
     func accessibilityTrusted(prompt: Bool) -> Bool
+    func currentAccessibilityTrusted() -> Bool
     func inputMonitoringGranted() -> Bool
     func requestInputMonitoring()
     func openSettings(_ kind: PrivacyKind)
@@ -47,7 +48,13 @@ final class PermissionClient {
     func openSettings(_ kind: PrivacyKind) {
         api.openSettings(kind)
     }
+
+    func currentAccessibility() -> Bool {
+        api.currentAccessibilityTrusted()
+    }
 }
+
+extension PermissionClient: PermissionServing {}
 
 final class SystemPermissionAPI: PermissionAPI {
     func accessibilityTrusted(prompt: Bool) -> Bool {
@@ -55,6 +62,10 @@ final class SystemPermissionAPI: PermissionAPI {
             kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: prompt
         ] as CFDictionary
         return AXIsProcessTrustedWithOptions(options)
+    }
+
+    func currentAccessibilityTrusted() -> Bool {
+        AXIsProcessTrusted()
     }
 
     func inputMonitoringGranted() -> Bool {
