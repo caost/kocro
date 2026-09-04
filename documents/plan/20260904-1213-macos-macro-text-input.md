@@ -17,7 +17,7 @@ status: in-progress
 
 **Goal:** macOS 13 이상에서 사용자가 만든 매크로를 전역 단축키로 실행하고 Unicode 텍스트와 선택적인 후속 키를 완성된 배치로 만들어 FIFO 순서대로 게시하는 `Kocro` 메뉴 바 앱을 구현한다.
 
-**Architecture:** `AppController`는 검증된 실행 설정과 편집 초안을 분리하고 원자적 JSON 저장이 성공한 뒤에만 실행 설정과 등록을 교체한다. `ShortcutCoordinator`는 일반 키 조합과 F13~F20을 Carbon으로, 단독 F21~F24를 필요한 HID usage만 매칭하는 `IOHIDManager`로 수신한다. 트리거 시점의 실행 내용을 값으로 복사하고 전체 `CGEvent` 생성이 끝난 요청만 직렬 queue에서 FIFO로 게시한다.
+**Architecture:** `AppController`는 검증된 실행 설정과 편집 초안을 분리하고 원자적 JSON 저장이 성공한 뒤에만 실행 설정과 등록을 교체한다. `ShortcutCoordinator`는 일반 키 조합과 F13~F20을 Carbon으로, 단독 F21~F24를 필요한 HID usage만 매칭하는 `IOHIDManager`로 수신한다. 트리거 시점의 실행 내용을 값으로 복사하고 전체 `CGEvent` 생성이 끝난 요청만 직렬 큐에서 FIFO로 게시한다.
 
 **Tech Stack:** Swift 5.9, SwiftUI `MenuBarExtra`/`Settings`, Foundation, Carbon, IOKit HID, ApplicationServices/CoreGraphics, ServiceManagement, OSLog, XCTest, Xcode 15 이상. 외부 package는 추가하지 않는다.
 
@@ -38,16 +38,16 @@ status: in-progress
 | `apps/macos/Kocro/Features/MenuBar/MenuBarView.swift` | 우선순위 상태, 등록 수, 결과, 권한, 종료 |
 | `apps/macos/Kocro/Features/Settings/{SettingsView,KeyRecorder,LoginItemController}.swift` | 무제한 편집, 로컬 키 기록, 로그인 실행 |
 | `apps/macos/KocroTests/*.swift` | 시스템 경계와 수용 기준 XCTest |
-| `apps/macos/KocroTests/Support/TestDoubles.swift` | 각 task의 file·OS API 대체 구현과 공통 fixture |
+| `apps/macos/KocroTests/Support/TestDoubles.swift` | 각 task의 파일·OS API 대체 구현과 공통 fixture |
 | `documents/reference/macos-macro-text-input-verification.md` | 실제 앱·권한·충돌·성능 검증 결과 |
 
 ## 공통 규칙
 
-- product, project, target, scheme, module과 executable은 `Kocro`, bundle identifier는 `com.caost.Kocro`, deployment target은 macOS 13.0이다.
-- production Swift 파일은 `Kocro`, test 파일은 `KocroTests` target에만 포함한다. 각 파일 생성 task에서 `project.pbxproj`도 갱신한다.
+- product, project, scheme, 앱 타깃, Swift 모듈과 실행 파일 이름은 `Kocro`, bundle identifier는 `com.caost.Kocro`, deployment target은 macOS 13.0이다.
+- production Swift 파일은 `Kocro`, 테스트 파일은 `KocroTests` 타깃에만 포함한다. 각 파일 생성 task에서 `project.pbxproj`도 갱신한다.
 - 로그와 화면 결과에는 UUID, shortcut, 오류 종류와 시각만 둔다. 매크로 문자열과 활성 앱 이름은 넣지 않는다.
-- builder는 브랜치를 변경하거나 커밋하지 않는다. conductor만 각 task 검증 뒤 stage 6에서 `wip(task-N): ...` checkpoint commit을 만들 수 있다. stage 9 승인 뒤 conductor가 checkpoint를 정리하고 전체 이슈 변경을 누락 없이 논리 단위 formal commit으로 다시 구성한다.
-- 각 task는 GREEN 검증 뒤 중복 제거와 이름 정리처럼 동작을 바꾸지 않는 refactor를 수행하고, 해당 task의 focused test를 다시 통과시킨 뒤 checkpoint 후보로 넘긴다.
+- builder는 브랜치를 변경하거나 커밋하지 않는다. conductor만 각 task 검증 뒤 stage 6에서 `wip(task-N): ...` checkpoint 커밋을 만들 수 있다. stage 9 승인 뒤 conductor가 checkpoint를 정리하고 전체 이슈 변경을 누락 없이 논리 단위 formal 커밋으로 다시 구성한다.
+- 각 task는 GREEN 검증 뒤 중복 제거와 이름 정리처럼 동작을 바꾸지 않는 refactor를 수행하고, 해당 task의 focused 테스트를 다시 통과시킨 뒤 checkpoint 후보로 넘긴다.
 
 ### Task 1: Kocro Xcode 프로젝트와 메뉴 바 진입점
 
@@ -58,9 +58,9 @@ status: in-progress
 
 - [x] **Step 1: 프로젝트를 생성한다**
 
-Xcode의 macOS App template에서 Product Name `Kocro`, Organization Identifier `com.caost`, SwiftUI, Swift, Include Tests를 선택해 `apps/macos`에 생성한다. deployment target은 13.0, `LSUIElement=YES`, signing off로 설정하고 Carbon, IOKit, ApplicationServices, ServiceManagement를 링크한다. RED 상태를 만들기 위해 template이 생성한 `ContentView.swift`와 `KocroApp.swift`, UI test target을 삭제한다.
+Xcode의 macOS App template에서 Product Name `Kocro`, Organization Identifier `com.caost`, SwiftUI, Swift, Include Tests를 선택해 `apps/macos`에 생성한다. deployment target은 13.0, `LSUIElement=YES`, signing off로 설정하고 Carbon, IOKit, ApplicationServices, ServiceManagement를 링크한다. RED 상태를 만들기 위해 template이 생성한 `ContentView.swift`와 `KocroApp.swift`, UI 테스트 타깃을 삭제한다.
 
-- [x] **Step 2: 실패 test를 작성한다**
+- [x] **Step 2: 실패 테스트를 작성한다**
 
 ```swift
 import XCTest
@@ -111,7 +111,7 @@ builder는 커밋하지 않는다. conductor는 stage 6 뒤 `wip(task-1): scaffo
 - Create: `apps/macos/Kocro/Domain/SettingsValidator.swift`
 - Create: `apps/macos/KocroTests/SettingsValidatorTests.swift`
 
-- [x] **Step 1: 실패 test를 작성한다**
+- [x] **Step 1: 실패 테스트를 작성한다**
 
 ```swift
 import XCTest
@@ -187,7 +187,7 @@ struct AppSettings: Codable, Equatable, Sendable {
 ```
 
 ```swift
-enum ValidationError: Error { case duplicateID, textTooLong, emptyText, emptyShortcut, modifierRequired, unsupportedFunction, HIDModifiers, duplicateShortcut, invalidTrailing }
+enum ValidationError: Error { case duplicateID, textTooLong, emptyText, emptyShortcut, modifierRequired, unsupportedFunction, hidOnlyKeyRejectsModifiers, duplicateShortcut, invalidTrailing }
 struct SettingsValidator {
     private let modifierKeyCodes: Set<UInt16> = [54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
     func validate(_ settings: AppSettings) throws -> AppSettings {
@@ -212,7 +212,7 @@ struct SettingsValidator {
         case .function(let n):
             guard (1...24).contains(n) else { throw ValidationError.unsupportedFunction }
             if n <= 12, value.modifiers.isEmpty { throw ValidationError.modifierRequired }
-            if (21...24).contains(n), !value.modifiers.isEmpty { throw ValidationError.HIDModifiers }
+            if (21...24).contains(n), !value.modifiers.isEmpty { throw ValidationError.hidOnlyKeyRejectsModifiers }
         }
     }
     func validateTrailing(_ value: TrailingKey) throws {
@@ -242,7 +242,7 @@ conductor는 stage 6 뒤 `wip(task-2): add macro domain validation`을 만들 �
 - Create: `apps/macos/KocroTests/JSONSettingsStoreTests.swift`
 - Create: `apps/macos/KocroTests/Support/TestDoubles.swift`
 
-- [x] **Step 1: 실패 test를 작성한다**
+- [x] **Step 1: 실패 테스트를 작성한다**
 
 ```swift
 import XCTest
@@ -293,7 +293,7 @@ final class JSONSettingsStore: SettingsStoring {
 }
 ```
 
-`ApplicationSupportSettingsFile`은 `~/Library/Application Support/com.caost.Kocro/settings.json`의 parent를 `0700`으로 만들고 같은 directory에 UUID 임시 파일을 `0600`으로 쓴다. 대상이 있으면 `FileManager.replaceItemAt`으로 교체하고, 최초 저장이면 같은 filesystem 안의 POSIX `rename(temporary.path, url.path)`으로 원자 이동한다. `rename`이 0이 아니면 `POSIXError(POSIXErrorCode(rawValue: errno)!)`를 던지고, `defer`에서 남은 임시 파일을 지운다. `MemorySettingsFile`은 test target에서 기존 대상 유무와 동일한 두 경로를 기록한다.
+`ApplicationSupportSettingsFile`은 `~/Library/Application Support/com.caost.Kocro/settings.json`의 parent를 `0700`으로 만들고 같은 directory에 UUID 임시 파일을 `0600`으로 쓴다. 대상이 있으면 `FileManager.replaceItemAt`으로 교체하고, 최초 저장이면 같은 filesystem 안의 POSIX `rename(temporary.path, url.path)`으로 원자 이동한다. `rename`이 0이 아니면 `POSIXError(POSIXErrorCode(rawValue: errno)!)`를 던지고, `defer`에서 남은 임시 파일을 지운다. `MemorySettingsFile`은 테스트 타깃에서 기존 대상 유무와 동일한 두 경로를 기록한다.
 
 ```swift
 // apps/macos/KocroTests/Support/TestDoubles.swift — Task 3에서 생성
@@ -340,7 +340,7 @@ conductor는 stage 6 뒤 `wip(task-3): persist settings atomically`를 만들 �
 - Create: `apps/macos/KocroTests/HIDFunctionKeySourceTests.swift`
 - Modify: `apps/macos/KocroTests/Support/TestDoubles.swift`
 
-- [x] **Step 1: 실패 test를 작성한다**
+- [x] **Step 1: 실패 테스트를 작성한다**
 
 ```swift
 import XCTest
@@ -426,9 +426,9 @@ final class ShortcutCoordinator {
 }
 ```
 
-`CarbonHotKeySource`는 callback 첫 줄에서 registration ID와 `ContinuousClock.now`를 전달한다. `HIDFunctionKeySource`는 Keyboard/Keypad page `0x07`의 F21 `0x70`, F22 `0x71`, F23 `0x72`, F24 `0x73` 가운데 활성 usage만 매칭하고 callback 첫 줄에서 수신 instant를 잡는다. 두 source callback과 `replace`는 같은 serial `ingress` queue에 제출된다. 교체보다 먼저 도착한 callback은 이전 map/snapshot으로 queue에 들어가고, 교체는 기존 source 중지→map 제거→`installSnapshots`→새 등록을 한 block에서 수행하며, 이후 callback만 새 map/snapshot을 사용한다. 두 source는 문자열을 받지 않으며 HID는 비독점 open으로 원래 이벤트를 제거하지 않는다.
+`CarbonHotKeySource`는 콜백 첫 줄에서 registration ID와 `ContinuousClock.now`를 전달한다. `HIDFunctionKeySource`는 Keyboard/Keypad page `0x07`의 F21 `0x70`, F22 `0x71`, F23 `0x72`, F24 `0x73` 가운데 활성 usage만 매칭하고 콜백 첫 줄에서 수신 시점을 잡는다. 두 source 콜백과 `replace`는 같은 serial `ingress` 큐에 제출된다. 교체보다 먼저 도착한 콜백은 이전 map/snapshot으로 큐에 들어가고, 교체는 기존 source 중지→map 제거→`installSnapshots`→새 등록을 한 block에서 수행하며, 이후 콜백만 새 map/snapshot을 사용한다. 두 source는 문자열을 받지 않으며 HID는 비독점 open으로 원래 이벤트를 제거하지 않는다.
 
-`TestDoubles.swift`에 `CarbonSpy: CarbonServing`, `HIDSpy: HIDServing`, `HIDAPISpy`와 `TriggerSpy`를 추가한다. 각 spy는 위 test가 읽는 `registrationCount`, `unregisterAllCount`, `usages`, `permissionChecks`, `stopCount`, `functions`를 배열/정수로 저장하고 생성자 인수 `failingRegistration`, `permission`, `starts`에 따라 protocol 결과를 그대로 반환한다. 이는 OS API를 호출하지 않는 test 전용 구현이며 production membership을 선택하지 않는다.
+`TestDoubles.swift`에 `CarbonSpy: CarbonServing`, `HIDSpy: HIDServing`, `HIDAPISpy`와 `TriggerSpy`를 추가한다. 각 spy는 위 테스트가 읽는 `registrationCount`, `unregisterAllCount`, `usages`, `permissionChecks`, `stopCount`, `functions`를 배열/정수로 저장하고 생성자 인수 `failingRegistration`, `permission`, `starts`에 따라 protocol 결과를 그대로 반환한다. 이는 OS API를 호출하지 않는 테스트 전용 구현이며 production membership을 선택하지 않는다.
 
 - [x] **Step 4: 검증한다**
 
@@ -448,7 +448,7 @@ conductor는 stage 6 뒤 `wip(task-4): register Carbon and HID shortcuts`을 만
 - Create: `apps/macos/KocroTests/PermissionClientTests.swift`
 - Modify: `apps/macos/KocroTests/Support/TestDoubles.swift`
 
-- [x] **Step 1: 실패 test를 작성한다**
+- [x] **Step 1: 실패 테스트를 작성한다**
 
 ```swift
 import XCTest
@@ -504,7 +504,7 @@ Expected: `** TEST SUCCEEDED **`; F21~F24가 없을 때 Input Monitoring 호출�
 
 conductor는 stage 6 뒤 `wip(task-5): add conditional permission handling`을 만들 수 있고 builder는 커밋하지 않는다.
 
-### Task 6: Unicode 완성 배치와 FIFO queue
+### Task 6: Unicode 완성 배치와 FIFO 큐
 
 **Files:**
 - Modify: `apps/macos/Kocro.xcodeproj/project.pbxproj`
@@ -514,7 +514,7 @@ conductor는 stage 6 뒤 `wip(task-5): add conditional permission handling`을 �
 - Create: `apps/macos/KocroTests/MacroExecutionQueueTests.swift`
 - Modify: `apps/macos/KocroTests/Support/TestDoubles.swift`
 
-- [x] **Step 1: 실패 test를 작성한다**
+- [x] **Step 1: 실패 테스트를 작성한다**
 
 ```swift
 import XCTest
@@ -554,7 +554,7 @@ Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destina
 
 Expected: input 타입 부재와 `** TEST FAILED **`.
 
-- [x] **Step 3: batch와 queue를 구현한다**
+- [x] **Step 3: batch와 큐를 구현한다**
 
 ```swift
 enum EventKind: Equatable { case unicode(String), keyDown(UInt16, ModifierSet), keyUp(UInt16, ModifierSet) }
@@ -588,7 +588,7 @@ final class MacroExecutionQueue {
 }
 ```
 
-Core Graphics `BatchPosting`은 production `maximumUTF16Units`를 `20`으로 고정하고 모든 Unicode keyDown event에 `keyboardSetUnicodeString`을 적용하며 custom modifier flags를 후속 keyDown/keyUp에 설정한다. factory가 전부 생성한 뒤에만 `.cghidEventTap`에 순서대로 게시한다. 마지막 게시 호출이 반환된 뒤 다음 queue block을 시작한다. 대상 앱 반영 확인, 자동 재시도, clipboard, process, shell과 network는 구현하지 않는다.
+Core Graphics `BatchPosting`은 production `maximumUTF16Units`를 `20`으로 고정하고 모든 Unicode keyDown event에 `keyboardSetUnicodeString`을 적용하며 custom modifier flags를 후속 keyDown/keyUp에 설정한다. factory가 전부 생성한 뒤에만 `.cghidEventTap`에 순서대로 게시한다. 마지막 게시 호출이 반환된 뒤 다음 큐 block을 시작한다. 대상 앱 반영 확인, 자동 재시도, clipboard, 프로세스, 셸과 network는 구현하지 않는다.
 
 `TestDoubles.swift`에 `EventAPISpy: EventAPI`, `BlockingPoster: BatchPosting`, `RecordingBatchPoster: BatchPosting`을 추가한다. `EventAPISpy`는 creation 순번이 `failAt`과 같으면 nil을 반환하고 `created`/`posted`를 기록한다. 두 poster는 request의 text, 현재 진입 수와 `maximumConcurrent`를 lock으로 보호해 기록하며 `BlockingPoster`는 FIFO 확인용 semaphore를 제공한다.
 
@@ -610,7 +610,7 @@ conductor는 stage 6 뒤 `wip(task-6): queue complete Unicode batches`를 만들
 - Create: `apps/macos/KocroTests/AppControllerTests.swift`
 - Modify: `apps/macos/KocroTests/Support/TestDoubles.swift`
 
-- [x] **Step 1: 실패 test를 작성한다**
+- [x] **Step 1: 실패 테스트를 작성한다**
 
 ```swift
 import XCTest
@@ -619,7 +619,7 @@ import XCTest
     func testBadLoadDisablesEverythingAndOpensReplacementDraft() {
         let app = AppController(store: StoreSpy(load: .failure(StoreError.invalidFile)), shortcuts: ShortcutSpy(), permissions: PermissionSpy(), queue: QueueSpy())
         app.start(); XCTAssertEqual(app.overallStatus, .settingsError); XCTAssertTrue(app.runtime.macros.isEmpty)
-        app.openSettings(); XCTAssertEqual(app.draft.macros.count, 12); XCTAssertTrue(app.showsReplaceWarning)
+        app.prepareSettingsDraft(); XCTAssertEqual(app.draft.macros.count, 12); XCTAssertTrue(app.showsReplaceWarning)
     }
     func testFailedSaveKeepsOldRuntimeRegistrationAndTrigger() {
         let old = Fixtures.settings(text: "old"), store = StoreSpy(load: .success(old)), shortcuts = ShortcutSpy()
@@ -706,7 +706,7 @@ final class TriggerRouter {
         queue.onIdleChange = { [weak self] idle in Task { @MainActor in self?.queueIsIdle = idle } }
     }
     func start() { do { let value = try store.load(); runtime = value; draft = value; refreshPermissions(reconcileShortcuts: false); registration = shortcuts.replace(with: value.macros) { snapshots.replace(value.macros) } } catch { runtime = .init(macros: []); draft = .init(macros: []); snapshots.removeAll(); loadError = error } }
-    func openSettings() { if loadError != nil { draft = .defaults; showsReplaceWarning = true }; refreshPermissions() }
+    func prepareSettingsDraft() { if loadError != nil { draft = .defaults; showsReplaceWarning = true }; refreshPermissions() }
     func save() { do { try store.save(draft); runtime = draft; loadError = nil; saveError = nil; showsReplaceWarning = false; refreshPermissions(reconcileShortcuts: false); registration = shortcuts.replace(with: runtime.macros) { snapshots.replace(runtime.macros) } } catch { saveError = error } }
     func refreshPermissions(reconcileShortcuts: Bool = true) { _ = permissions.refresh(needsHID: runtime.macros.contains { $0.isEnabled && $0.shortcut.isHIDOnly }); if reconcileShortcuts { registration = shortcuts.replace(with: runtime.macros) { snapshots.replace(runtime.macros) } } }
     func updateMeasurementCount(_ count: Int) { measurementCount = count }
@@ -714,9 +714,9 @@ final class TriggerRouter {
 }
 ```
 
-`ShortcutCoordinator`, `PermissionClient`, `MacroExecutionQueue`를 각각 위 protocol에 conform시킨다. `PermissionClient.currentAccessibility()`는 cached UI state를 읽지 않고 thread-safe한 `AXIsProcessTrusted()`를 호출한다. Carbon과 HID source callback은 어느 run loop/thread에서 와도 `TriggerRouter.receive`를 동기 호출하고, router가 actor 전환 전에 `ExecutionSnapshotStore` lock 안에서 문자열과 후속 키를 복사한다. UI 상태 변경만 `queue.onResult`에서 `MainActor`로 보낸다. 저장 순서는 validation→temporary write→atomic replace→runtime/snapshot 교체→registration 교체다. 저장 실패에는 마지막 두 단계가 실행되지 않는다. 권한 refresh는 shortcut을 다시 조정해 새 권한 부여와 실행 중 철회를 즉시 상태에 반영한다. 항목별 Carbon/HID 실패는 전체 settings error로 올리지 않는다.
+`ShortcutCoordinator`, `PermissionClient`, `MacroExecutionQueue`를 각각 위 protocol에 conform시킨다. `PermissionClient.currentAccessibility()`는 cached UI state를 읽지 않고 thread-safe한 `AXIsProcessTrusted()`를 호출한다. Carbon과 HID source 콜백은 어느 run loop/thread에서 와도 `TriggerRouter.receive`를 동기 호출하고, router가 actor 전환 전에 `ExecutionSnapshotStore` lock 안에서 문자열과 후속 키를 복사한다. UI 상태 변경만 `queue.onResult`에서 `MainActor`로 보낸다. 저장 순서는 validation→temporary write→atomic replace→runtime/snapshot 교체→registration 교체다. 저장 실패에는 마지막 두 단계가 실행되지 않는다. 권한 refresh는 shortcut을 다시 조정해 새 권한 부여와 실행 중 철회를 즉시 상태에 반영한다. 항목별 Carbon/HID 실패는 전체 settings error로 올리지 않는다.
 
-`TestDoubles.swift`에 `StoreSpy: SettingsStoring`, `ShortcutSpy: ShortcutCoordinating`, `PermissionSpy: PermissionServing`, `QueueSpy: ExecutionQueueing`을 추가한다. 각 spy는 test 생성자 인수와 mutable 오류를 반환하고 `replaceCalls`, `requests`, `onTrigger`, `onResult`를 그대로 기록한다. `ShortcutSpy.trigger(_:)`는 `onTrigger(id, .now)`를 호출하고 `QueueSpy.reject`는 request 배열을 바꾸지 않은 채 result만 기록한다.
+`TestDoubles.swift`에 `StoreSpy: SettingsStoring`, `ShortcutSpy: ShortcutCoordinating`, `PermissionSpy: PermissionServing`, `QueueSpy: ExecutionQueueing`을 추가한다. 각 spy는 테스트 생성자 인수와 mutable 오류를 반환하고 `replaceCalls`, `requests`, `onTrigger`, `onResult`를 그대로 기록한다. `ShortcutSpy.trigger(_:)`는 `onTrigger(id, .now)`를 호출하고 `QueueSpy.reject`는 request 배열을 바꾸지 않은 채 result만 기록한다.
 
 - [x] **Step 4: 검증한다**
 
@@ -741,7 +741,7 @@ conductor는 stage 6 뒤 `wip(task-7): coordinate settings and execution`을 만
 - Create: `apps/macos/KocroTests/LoginItemControllerTests.swift`
 - Modify: `apps/macos/KocroTests/Support/TestDoubles.swift`
 
-- [x] **Step 1: 실패 test를 작성한다**
+- [x] **Step 1: 실패 테스트를 작성한다**
 
 ```swift
 import XCTest
@@ -832,7 +832,7 @@ struct MenuBarViewModel {
 }
 ```
 
-`AppController`에 `statusText` computed property와 `requestAccessibility()`, `requestInputMonitoring()`, `openSettings(_ kind: PrivacyKind)`을 추가해 `PermissionClient`로 위임한다. app startup이 끝난 뒤 `SettingsViewModel`을 생성한다. 메뉴의 설정 버튼은 `app.openSettings(); settingsModel.loadDraftIfNeeded(from: app); settingsModel.synchronizeStatus(from: app)`을 호출한 다음 설정 창을 연다. model이 편집 draft의 단일 소유자이며 `synchronizeStatus`는 `settings`를 덮어쓰지 않는다. `onSave`는 controller draft를 전달받은 값으로 바꾸고 `app.save()`한다. 성공하면 `markSaved(app.draft)`, 실패하면 dirty draft를 유지한 채 `synchronizeStatus`만 호출한다. 권한 refresh와 registration 변경에도 `synchronizeStatus`만 호출하므로 저장 전 편집은 유지된다. `MacroRow`는 binding과 UUID별 오류 배열만 렌더링하는 별도 `View`로 같은 `SettingsView.swift`에 정의한다.
+`AppController`에 `statusText` computed property와 `requestAccessibility()`, `requestInputMonitoring()`, `openPrivacySettings(_ kind: PrivacyKind)`을 추가해 `PermissionClient`로 위임한다. app startup이 끝난 뒤 `SettingsViewModel`을 생성한다. 메뉴의 설정 버튼은 `app.prepareSettingsDraft(); settingsModel.loadDraftIfNeeded(from: app); settingsModel.synchronizeStatus(from: app)`을 호출한 다음 설정 창을 연다. model이 편집 draft의 단일 소유자이며 `synchronizeStatus`는 `settings`를 덮어쓰지 않는다. `onSave`는 controller draft를 전달받은 값으로 바꾸고 `app.save()`한다. 성공하면 `markSaved(app.draft)`, 실패하면 dirty draft를 유지한 채 `synchronizeStatus`만 호출한다. 권한 refresh와 registration 변경에도 `synchronizeStatus`만 호출하므로 저장 전 편집은 유지된다. `MacroRow`는 binding과 UUID별 오류 배열만 렌더링하는 별도 `View`로 같은 `SettingsView.swift`에 정의한다.
 
 - [x] **Step 4: 로그인과 실제 dependency 조립을 구현한다**
 
@@ -847,7 +847,7 @@ final class LoginItemController: ObservableObject {
 }
 ```
 
-`KocroApp`의 `@StateObject` container에서 JSON file, Carbon, HID, permissions, CGEvent poster, queue, `SMAppService.mainApp`을 한 번 생성해 두 scene에 전달한다. 설정 열기는 macOS 13에서 동작하는 `NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)`을 사용하고 macOS 14 전용 `SettingsLink`는 사용하지 않는다. 앱 시작에 `start`, 활성화와 menu 표시 때 `refreshPermissions`, 종료에 `shutdown`을 호출한다.
+`KocroApp`의 `@StateObject` container에서 JSON 파일, Carbon, HID, permissions, CGEvent poster, 큐, `SMAppService.mainApp`을 한 번 생성해 두 scene에 전달한다. 설정 열기는 macOS 13에서 동작하는 `NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)`을 사용하고 macOS 14 전용 `SettingsLink`는 사용하지 않는다. 앱 시작에 `start`, 활성화와 menu 표시 때 `refreshPermissions`, 종료에 `shutdown`을 호출한다.
 
 `TestDoubles.swift`에 `LoginServiceSpy: LoginService`를 추가해 mutable `status`, `registerCount`, `unregisterCount`를 기록한다. `register()`는 status를 `.enabled`, `unregister()`는 `.notRegistered`로 바꾼다.
 
@@ -855,7 +855,7 @@ final class LoginItemController: ObservableObject {
 
 Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' -only-testing:KocroTests/ViewModelTests -only-testing:KocroTests/LoginItemControllerTests && xcodebuild build -project apps/macos/Kocro.xcodeproj -scheme Kocro -configuration Release CODE_SIGNING_ALLOWED=NO`
 
-Expected: test/build 성공, 30개 항목 편집 성공, 기본 login off.
+Expected: 테스트·빌드 성공, 30개 항목 편집 성공, 기본 login off.
 
 - [x] **Step 6: checkpoint 후보**
 
@@ -868,7 +868,7 @@ conductor는 stage 6 뒤 `wip(task-8): add menu bar and settings UI`를 만들 �
 - Create: `apps/macos/KocroTests/MacroPipelineIntegrationTests.swift`
 - Create: `apps/macos/KocroTests/PrivacyTests.swift`
 
-- [x] **Step 1: 실패 test를 작성한다**
+- [x] **Step 1: 실패 테스트를 작성한다**
 
 ```swift
 import XCTest
@@ -896,7 +896,7 @@ Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destina
 
 Expected: `PipelineHarness` 부재와 `** TEST FAILED **`.
 
-- [x] **Step 3: test harness를 구현한다**
+- [x] **Step 3: 테스트 harness를 구현한다**
 
 ```swift
 @MainActor final class PipelineHarness {
@@ -912,7 +912,7 @@ Expected: `PipelineHarness` 부재와 `** TEST FAILED **`.
 }
 ```
 
-`RecordingBatchPoster`는 text 순서와 동시 진입 수만 기록하고 production target에는 포함하지 않는다.
+`RecordingBatchPoster`는 text 순서와 동시 진입 수만 기록하고 production 타깃에는 포함하지 않는다.
 
 `StoreSpy.failOnce(_:)`는 다음 `save` 호출에서 오류를 local 변수로 옮기고 저장된 오류를 nil로 지운 뒤 throw한다. 이후 `save`는 전달된 값을 `loadResult`에 반영하므로 두 번째 저장은 성공한다.
 
@@ -920,7 +920,7 @@ Expected: `PipelineHarness` 부재와 `** TEST FAILED **`.
 
 Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' && ! rg -n 'CGEventTap|addGlobalMonitorForEvents|NSPasteboard|Process\(|NSTask|URLSession|F2[5-9]|F3[0-5]' apps/macos/Kocro && ! find apps -maxdepth 1 -type d \( -name windows -o -name linux -o -name shared \) | grep .`
 
-Expected: 전체 test 성공, 금지 API·F25~F35·Windows/Linux/shared 결과 없음.
+Expected: 전체 테스트 성공, 금지 API·F25~F35·Windows/Linux/shared 결과 없음.
 
 - [x] **Step 5: checkpoint 후보**
 
@@ -935,7 +935,7 @@ conductor는 stage 6 뒤 `wip(task-9): verify macro pipeline`을 만들 수 있�
 - Create: `documents/reference/macos-macro-text-input-verification.md`
 - Modify: `documents/reference/README.md`
 
-- [x] **Step 1: 실패 test를 작성한다**
+- [x] **Step 1: 실패 테스트를 작성한다**
 
 ```swift
 import XCTest
@@ -979,7 +979,7 @@ final class MeasurementSession {
 }
 ```
 
-Carbon/HID callback의 첫 줄에서 `ContinuousClock.now`를 `ExecutionRequest.receivedAt`에 복사한다. 실제 poster는 마지막 `CGEvent.post`가 반환된 뒤 `try? measurement.record(receivedAt: request.receivedAt, postedAt: .now)`를 별도 문장으로 호출한다. 기록 저장 실패는 OSLog에 오류 종류만 남기며 이미 게시된 요청의 `postingRequested` 결과를 바꾸거나 `eventCreationFailed`로 변환하지 않는다. `KocroApp` container가 `MeasurementSession`을 생성하고 `--measure-posting-latency` argument가 있을 때만 poster에 연결한다. container는 `measurement.onProgress = { count in Task { @MainActor in app.updateMeasurementCount(count) } }`로 `measurementCount`를 갱신하고, queue의 `onIdleChange`는 `queueIsIdle`을 MainActor에서 갱신한다. 메뉴 바는 측정 mode일 때 `측정 \(measurementCount)/100 · \(queueIsIdle ? "queue empty" : "게시 중")`을 표시한다. 수신 instant부터 마지막 게시 반환까지 측정하며 대상 앱 화면 반영은 제외한다. 검증자는 queue empty가 된 뒤 다음 키를 눌러 queue 대기를 0으로 유지한다. 앱은 100번째 sample 뒤 report를 저장하고, 실행마다 외부 process를 시작하지 않는다.
+Carbon/HID 콜백의 첫 줄에서 `ContinuousClock.now`를 `ExecutionRequest.receivedAt`에 복사한다. 실제 poster는 마지막 `CGEvent.post`가 반환된 뒤 `try? measurement.record(receivedAt: request.receivedAt, postedAt: .now)`를 별도 문장으로 호출한다. 기록 저장 실패는 OSLog에 오류 종류만 남기며 이미 게시된 요청의 `postingRequested` 결과를 바꾸거나 `eventCreationFailed`로 변환하지 않는다. `KocroApp` container가 `MeasurementSession`을 생성하고 `--measure-posting-latency` 인자가 있을 때만 poster에 연결한다. container는 `measurement.onProgress = { count in Task { @MainActor in app.updateMeasurementCount(count) } }`로 `measurementCount`를 갱신하고, 큐의 `onIdleChange`는 `queueIsIdle`을 MainActor에서 갱신한다. 메뉴 바는 측정 모드일 때 `측정 \(measurementCount)/100 · \(queueIsIdle ? "큐 비어 있음" : "게시 중")`을 표시한다. 수신 시점부터 마지막 게시 반환까지 측정하며 대상 앱 화면 반영은 제외한다. 검증자는 `큐 비어 있음`이 된 뒤 다음 키를 눌러 큐 대기를 0으로 유지한다. 앱은 100번째 샘플 뒤 report를 저장하고, 실행마다 외부 프로세스를 시작하지 않는다.
 
 - [x] **Step 4: build를 검증한다**
 
@@ -989,11 +989,11 @@ Expected: `** TEST SUCCEEDED **`, `** BUILD SUCCEEDED **`.
 
 - [ ] **Step 5: 실제 결과를 기록한다**
 
-설정에서 F13 macro를 활성화하고 정확히 100개의 ASCII `a`를 저장한 뒤 Release 앱을 종료한다. Run: `open "$(pwd)/apps/macos/build/Build/Products/Release/Kocro.app" --args --measure-posting-latency`. 메뉴 바의 queue empty와 `측정 N/100`을 확인하면서 F13을 100회 누른다. 앱은 한 번만 시작하며 각 shortcut 실행에서 process를 만들지 않는다.
+설정에서 F13 macro를 활성화하고 정확히 100개의 ASCII `a`를 저장한 뒤 Release 앱을 종료한다. Run: `open "$(pwd)/apps/macos/build/Build/Products/Release/Kocro.app" --args --measure-posting-latency`. 메뉴 바의 `큐 비어 있음`과 `측정 N/100`을 확인하면서 F13을 100회 누른다. 앱은 한 번만 시작하며 각 shortcut 실행에서 프로세스를 만들지 않는다.
 
-`documents/reference/macos-macro-text-input-verification.md`에 canonical frontmatter와 다음 행을 만들고 날짜, macOS/app version, 실제 결과, pass/fail을 채운다: TextEdit 한글 입력기에서 한글·영문·여러 줄·emoji·조합 문자; Safari 또는 Chromium; Terminal; VS Code; 빠른 여러 shortcut; Accessibility 없음/실행 중 철회; F21~F24 활성 전후와 Input Monitoring 없음/철회; 포커스 앱도 F21 처리하는 HID 비독점; Carbon 충돌; 종료 자원 해제; 메뉴 바에서 로그인 시 실행을 켜고 macOS 로그인 항목에 나타나는지 확인한 뒤 다시 꺼서 제거되는지 확인. HID monitor 시작 실패는 Task 4의 deterministic `HIDSpy(starts: false)` test 결과로 검증 문서의 자동 검증 절에 기록하고 실제 환경에서 재현하도록 요구하지 않는다. 상태는 `게시 요청 완료`까지만 판정한다.
+`documents/reference/macos-macro-text-input-verification.md`에 canonical frontmatter와 다음 행을 만들고 날짜, macOS/app version, 실제 결과, 통과/실패를 채운다: TextEdit 한글 입력기에서 한글·영문·여러 줄·emoji·조합 문자; Safari 또는 Chromium; Terminal; VS Code; 빠른 여러 shortcut; Accessibility 없음/실행 중 철회; F21~F24 활성 전후와 Input Monitoring 없음/철회; 포커스 앱도 F21 처리하는 HID 비독점; Carbon 충돌; 종료 자원 해제; 메뉴 바에서 로그인 시 실행을 켜고 macOS 로그인 항목에 나타나는지 확인한 뒤 다시 꺼서 제거되는지 확인. HID monitor 시작 실패는 Task 4의 deterministic `HIDSpy(starts: false)` 테스트 결과로 검증 문서의 자동 검증 절에 기록하고 실제 환경에서 재현하도록 요구하지 않는다. 상태는 `게시 요청 완료`까지만 판정한다.
 
-같은 문서에 100회 원시 ms, p50, p95, Release, 100자 ASCII, queue 대기 제외, 이전 게시 완료 뒤 다음 측정, 외부 process 0회를 실제 값으로 기록한다. 첫 버전은 환경별 기준값 수집 단계라 통과 임계값이 없다는 점도 명시한다. `documents/reference/README.md`에 문서 링크를 등록한다.
+같은 문서에 100회 원시 ms, p50, p95, Release, 100자 ASCII, 큐 대기 제외, 이전 게시 완료 뒤 다음 측정, 외부 프로세스 0회를 실제 값으로 기록한다. 첫 버전은 환경별 기준값 수집 단계라 통과 임계값이 없다는 점도 명시한다. `documents/reference/README.md`에 문서 링크를 등록한다.
 
 Run: `test "$(jq '.samples | length' "$HOME/Library/Application Support/com.caost.Kocro/posting-latency.json")" -eq 100 && jq '{p50,p95}' "$HOME/Library/Application Support/com.caost.Kocro/posting-latency.json"`
 
@@ -1005,9 +1005,9 @@ Run: `! rg -n 'TODO|TBD|실행 후 기록|NSPasteboard|Process\(|NSTask|URLSessi
 
 Expected: exit 0, 출력 없음. 문자열·활성 앱 이름·fallback·retry·외부 실행이 없다.
 
-- [x] **Step 7: stage 9 formal commit 소유권**
+- [x] **Step 7: stage 9 formal 커밋 소유권**
 
-builder는 브랜치를 변경하거나 커밋하지 않는다. conductor는 stage 6 checkpoint를 보존한 채 stage 9 승인을 기다린다. 승인 뒤 checkpoint를 정리하고 checkpoint의 파일을 하나도 누락하지 않은 채 전체 이슈 변경을 다음 논리 단위 formal commit으로 구성한다.
+builder는 브랜치를 변경하거나 커밋하지 않는다. conductor는 stage 6 checkpoint를 보존한 채 stage 9 승인을 기다린다. 승인 뒤 checkpoint를 정리하고 checkpoint의 파일을 하나도 누락하지 않은 채 전체 이슈 변경을 다음 논리 단위 formal 커밋으로 구성한다.
 
 ```text
 feat(macos): add Kocro settings domain and persistence
@@ -1018,7 +1018,7 @@ test(macos): verify macro input acceptance behavior
 docs: record macOS macro verification
 ```
 
-각 formal commit은 production 코드와 대응 test를 함께 포함한다. 단일 generic commit으로 합치지 않는다.
+각 formal 커밋은 production 코드와 대응 테스트를 함께 포함한다. 단일 generic 커밋으로 합치지 않는다.
 
 ## 수용 기준 연결
 
@@ -1027,8 +1027,8 @@ docs: record macOS macro verification
 | 1. macOS 13 메뉴 바·설정 | 1, 8 | smoke, Release, 실제 UI |
 | 2. 무제한 UUID 항목·저장 | 2, 3, 8 | validation, round-trip, 30개 UI |
 | 3. 키 규칙·Carbon/HID·조건부 권한 | 2, 4, 5 | matrix, usage, API 호출 수 |
-| 4. 한글 입력기 Unicode | 6, 10 | cluster test, TextEdit |
-| 5. 후속 키 1회·생성 실패 게시 0 | 6 | event 순서와 실패 test |
+| 4. 한글 입력기 Unicode | 6, 10 | cluster 테스트, TextEdit |
+| 5. 후속 키 1회·생성 실패 게시 0 | 6 | event 순서와 실패 테스트 |
 | 6. 빠른 FIFO | 6, 9 | 동시 게시 1, 100 요청 |
 | 7. 권한·로드·등록·HID·저장 오류 | 3~7, 10 | 항목 상태, 게시 차단, rollback, 실제 철회 |
 | 8. clipboard fallback·retry 없음 | 6, 9, 10 | 게시 수와 정적 검색 |

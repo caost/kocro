@@ -104,6 +104,13 @@ enum TrailingKey: Codable, Hashable, Sendable {
 }
 
 struct MacroDefinition: Codable, Equatable, Identifiable, Sendable {
+    static let maximumTextCount = 10_000
+
+    /// 화면과 오류 메시지가 함께 쓰는 상한 표기다. 실행 로케일과 무관하게 `10,000`을 낸다.
+    static let maximumTextCountText = maximumTextCount.formatted(
+        .number.grouping(.automatic).locale(Locale(identifier: "en_US"))
+    )
+
     let id: UUID
     var isEnabled: Bool
     var shortcut: ShortcutDefinition

@@ -33,6 +33,10 @@ enum MacKeyCodePolicy {
         80: 19, 90: 20,
     ]
 
+    private static let functionKeyCodesByNumber: [Int: UInt16] = Dictionary(
+        uniqueKeysWithValues: functionNumbersByKeyCode.map { ($0.value, $0.key) }
+    )
+
     static func isAllowedShortcutKeyCode(_ keyCode: UInt16) -> Bool {
         characterKeys.contains(keyCode)
             || editingAndNavigationKeys.contains(keyCode)
@@ -48,7 +52,7 @@ enum MacKeyCodePolicy {
     }
 
     static func keyCode(forFunction number: Int) -> UInt16? {
-        functionNumbersByKeyCode.first(where: { $0.value == number })?.key
+        functionKeyCodesByNumber[number]
     }
 
     static func keyCode(forLetter letter: String) -> UInt16? {

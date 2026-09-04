@@ -117,7 +117,7 @@ final class ViewModelTests: XCTestCase {
         model.loadDraftIfNeeded(from: app)
         XCTAssertTrue(model.settings.macros.isEmpty)
 
-        app.openSettings()
+        app.prepareSettingsDraft()
         model.loadDraftIfNeeded(from: app)
         model.synchronizeStatus(from: app)
 

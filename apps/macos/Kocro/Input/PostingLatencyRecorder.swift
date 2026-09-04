@@ -21,9 +21,15 @@ enum PostingLatencyRecorder {
         let sorted = values.sorted()
         return LatencyReport(
             samples: values,
-            p50: sorted[49],
-            p95: sorted[94]
+            p50: sorted[nearestRankIndex(0.50)],
+            p95: sorted[nearestRankIndex(0.95)]
         )
+    }
+
+    /// nearest-rank 백분위의 0 기반 인덱스다. 표본 수를 바꿔도 함께 움직인다.
+    private static func nearestRankIndex(_ percentile: Double) -> Int {
+        let rank = (Double(requiredSampleCount) * percentile).rounded(.up)
+        return min(max(Int(rank) - 1, 0), requiredSampleCount - 1)
     }
 }
 

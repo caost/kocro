@@ -68,13 +68,8 @@ final class MacroExecutionQueue: @unchecked Sendable {
     }
 
     func enqueue(_ request: ExecutionRequest) {
-        let snapshot = ExecutionRequest(
-            id: request.id,
-            shortcut: request.shortcut,
-            text: request.text,
-            trailing: request.trailing,
-            receivedAt: request.receivedAt
-        )
+        // ExecutionRequest 는 구조체이므로 이 캡처가 곧 수신 시점의 복사본이다.
+        let snapshot = request
         admit { [self] in
             let kind: ExecutionResultKind
             if !accessibility() {
@@ -142,7 +137,6 @@ final class MacroExecutionQueue: @unchecked Sendable {
                 state.onIdleChange?(true)
             }
 
-            guard state.pending == 0 else { return }
             let waiters = state.drainWaiters
             state.drainWaiters.removeAll()
             waiters.forEach { continuation in

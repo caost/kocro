@@ -23,7 +23,7 @@ final class LoginItemControllerTests: XCTestCase {
         service.registerError = LoginServiceSpy.Failure.denied
         let controller = LoginItemController(service: service)
 
-        controller.setEnabledFromUI(true)
+        controller.setEnabledReportingError(true)
 
         XCTAssertFalse(controller.isEnabled)
         XCTAssertNotNil(controller.errorMessage)

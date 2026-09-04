@@ -8,40 +8,66 @@ enum ValidationError: Error {
     case modifierRequired
     case unsupportedFunction
     case unsupportedModifiers
-    case HIDModifiers
+    case hidOnlyKeyRejectsModifiers
     case duplicateShortcut
     case invalidTrailing
 }
 
 struct SettingsValidator {
     func validate(_ settings: AppSettings) throws -> AppSettings {
-        var identifiers = Set<UUID>()
-        var activeShortcuts = Set<ShortcutRegistrationIdentity>()
-
         for macro in settings.macros {
-            guard identifiers.insert(macro.id).inserted else {
-                throw ValidationError.duplicateID
-            }
-            guard macro.text.count <= 10_000 else {
-                throw ValidationError.textTooLong
-            }
-            guard macro.isEnabled else {
-                continue
-            }
-            if let trailingKey = macro.trailingKey {
-                try validateTrailing(trailingKey)
-            }
-            guard !macro.text.isEmpty else {
-                throw ValidationError.emptyText
-            }
-            try validateShortcut(macro.shortcut)
-            guard let identity = macro.shortcut.registrationIdentity,
-                  activeShortcuts.insert(identity).inserted else {
-                throw ValidationError.duplicateShortcut
+            if let issue = issues(for: macro, in: settings).first {
+                throw issue
             }
         }
-
         return settings
+    }
+
+    /// 한 항목이 어긋난 규칙을 모두 모은다. 저장 검증과 설정 화면의 항목별 표시가
+    /// 같은 규칙을 두 벌로 구현하지 않도록 이 함수 하나만 사용한다.
+    func issues(for macro: MacroDefinition, in settings: AppSettings) -> [ValidationError] {
+        var issues: [ValidationError] = []
+
+        if settings.macros.filter({ $0.id == macro.id }).count > 1 {
+            issues.append(.duplicateID)
+        }
+        if macro.text.count > MacroDefinition.maximumTextCount {
+            issues.append(.textTooLong)
+        }
+        guard macro.isEnabled else {
+            return issues
+        }
+        if let trailingKey = macro.trailingKey,
+           !thrownIssue({ try validateTrailing(trailingKey) }).isEmpty {
+            issues.append(.invalidTrailing)
+        }
+        if macro.text.isEmpty {
+            issues.append(.emptyText)
+        }
+        issues.append(contentsOf: thrownIssue { try validateShortcut(macro.shortcut) })
+
+        guard let identity = macro.shortcut.registrationIdentity else {
+            issues.append(.duplicateShortcut)
+            return issues
+        }
+        let sharing = settings.macros.filter {
+            $0.isEnabled && $0.shortcut.registrationIdentity == identity
+        }
+        if sharing.count > 1 {
+            issues.append(.duplicateShortcut)
+        }
+        return issues
+    }
+
+    private func thrownIssue(_ body: () throws -> Void) -> [ValidationError] {
+        do {
+            try body()
+            return []
+        } catch let error as ValidationError {
+            return [error]
+        } catch {
+            return [.invalidTrailing]
+        }
     }
 
     func validateShortcut(_ shortcut: ShortcutDefinition) throws {
@@ -67,7 +93,7 @@ struct SettingsValidator {
                 throw ValidationError.modifierRequired
             }
             if (21...24).contains(number), !shortcut.modifiers.isEmpty {
-                throw ValidationError.HIDModifiers
+                throw ValidationError.hidOnlyKeyRejectsModifiers
             }
         }
     }

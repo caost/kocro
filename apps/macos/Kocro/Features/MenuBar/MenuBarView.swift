@@ -24,13 +24,9 @@ struct MenuBarView: View {
     let openSettingsWindow: () -> Void
     let refresh: () -> Void
 
-    private var registeredCount: Int {
-        app.registration.values.filter { $0 == .registered }.count
-    }
-
     var body: some View {
         Text(app.statusText)
-        Text("등록된 매크로 \(registeredCount)개")
+        Text("등록된 매크로 \(app.registeredCount)개")
 
         if let result = app.lastResult {
             Text(lastResultText(result))
@@ -39,7 +35,7 @@ struct MenuBarView: View {
         if app.measurementEnabled {
             Text(
                 "측정 \(app.measurementCount)/100 · "
-                    + (app.queueIsIdle ? "queue empty" : "게시 중")
+                    + (app.queueIsIdle ? "큐 비어 있음" : "게시 중")
             )
         }
 
@@ -50,7 +46,7 @@ struct MenuBarView: View {
                 app.requestAccessibility()
             }
             Button("Accessibility 설정 열기") {
-                app.openSettings(.accessibility)
+                app.openPrivacySettings(.accessibility)
             }
         }
 
@@ -59,7 +55,7 @@ struct MenuBarView: View {
                 app.requestInputMonitoring()
             }
             Button("Input Monitoring 설정 열기") {
-                app.openSettings(.inputMonitoring)
+                app.openPrivacySettings(.inputMonitoring)
             }
         }
 
@@ -69,7 +65,7 @@ struct MenuBarView: View {
             "로그인 시 실행",
             isOn: Binding(
                 get: { login.isEnabled },
-                set: { enabled in login.setEnabledFromUI(enabled) }
+                set: { enabled in login.setEnabledReportingError(enabled) }
             )
         )
         if let errorMessage = login.errorMessage {
@@ -79,7 +75,6 @@ struct MenuBarView: View {
         Divider()
 
         Button("종료") {
-            app.shutdown()
             NSApplication.shared.terminate(nil)
         }
         .onAppear(perform: refresh)

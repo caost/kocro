@@ -80,9 +80,8 @@ struct EventBatchFactory<API: EventAPI> {
             keyCode = 48
             modifiers = []
         case .custom(let value?, let flags):
-            do {
-                try SettingsValidator().validateTrailing(trailing)
-            } catch {
+            guard MacKeyCodePolicy.isAllowedTrailingKeyCode(value),
+                  flags.isSubset(of: .supported) else {
                 throw EventBuildError.invalidTrailingKey
             }
             keyCode = value

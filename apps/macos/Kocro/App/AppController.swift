@@ -147,7 +147,18 @@ final class AppController: ObservableObject {
     }
 
     var statusText: String {
-        MenuBarViewModel(statuses: [overallStatus], registrations: []).statusText
+        menuBar.statusText
+    }
+
+    var registeredCount: Int {
+        menuBar.registeredCount
+    }
+
+    private var menuBar: MenuBarViewModel {
+        MenuBarViewModel(
+            statuses: [overallStatus],
+            registrations: Array(registration.values)
+        )
     }
 
     var permissionState: PermissionState {
@@ -211,7 +222,7 @@ final class AppController: ObservableObject {
         }
     }
 
-    func openSettings() {
+    func prepareSettingsDraft() {
         if loadError != nil, !showsReplaceWarning {
             draft = .defaults
             showsReplaceWarning = true
@@ -227,7 +238,7 @@ final class AppController: ObservableObject {
         permissions.requestInputMonitoring()
     }
 
-    func openSettings(_ kind: PrivacyKind) {
+    func openPrivacySettings(_ kind: PrivacyKind) {
         permissions.openSettings(kind)
     }
 

@@ -43,11 +43,12 @@ final class LoginItemController: ObservableObject {
         }
     }
 
-    func setEnabledFromUI(_ enabled: Bool) {
+    /// 실패를 errorMessage 로만 알리고 던지지 않는다. 토글처럼 되돌릴 곳이 없는 호출자를 위한 경로다.
+    func setEnabledReportingError(_ enabled: Bool) {
         do {
             try setEnabled(enabled)
         } catch {
-            // setEnabled records a user-visible error while preserving the actual service state.
+            // setEnabled 가 실제 서비스 상태를 유지한 채 errorMessage 를 이미 기록했다.
         }
     }
 

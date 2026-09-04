@@ -53,41 +53,29 @@ final class SettingsViewModel: ObservableObject {
             return ["항목을 찾을 수 없습니다"]
         }
 
-        var errors: [String] = []
-        if macro.text.count > 10_000 {
-            errors.append("문자열은 10,000자 이하여야 합니다")
-        }
-        if macro.isEnabled && macro.text.isEmpty {
-            errors.append("활성 매크로의 문자열이 비어 있습니다")
-        }
-        if macro.isEnabled {
-            do {
-                try validator.validateShortcut(macro.shortcut)
-            } catch {
-                errors.append("단축키를 수정하세요")
-            }
-        }
-        if macro.isEnabled, let trailingKey = macro.trailingKey {
-            do {
-                try validator.validateTrailing(trailingKey)
-            } catch {
-                errors.append("후속 키를 수정하세요")
-            }
-        }
-        if settings.macros.filter({ $0.id == macro.id }).count > 1 {
-            errors.append("항목 ID가 중복됩니다")
-        }
-        if macro.isEnabled,
-           let identity = macro.shortcut.registrationIdentity,
-           settings.macros.filter({
-               $0.isEnabled && $0.shortcut.registrationIdentity == identity
-           }).count > 1 {
-            errors.append("활성 단축키가 중복됩니다")
-        }
+        var errors = validator.issues(for: macro, in: settings).map(message(for:))
         if let registrationState = registration[id], registrationState != .registered {
             errors.append(registrationMessage(registrationState))
         }
         return errors
+    }
+
+    private func message(for issue: ValidationError) -> String {
+        switch issue {
+        case .duplicateID:
+            return "항목 ID가 중복됩니다"
+        case .textTooLong:
+            return "문자열은 \(MacroDefinition.maximumTextCountText)자 이하여야 합니다"
+        case .emptyText:
+            return "활성 매크로의 문자열이 비어 있습니다"
+        case .emptyShortcut, .modifierRequired, .unsupportedFunction,
+             .unsupportedModifiers, .hidOnlyKeyRejectsModifiers:
+            return "단축키를 수정하세요"
+        case .duplicateShortcut:
+            return "활성 단축키가 중복됩니다"
+        case .invalidTrailing:
+            return "후속 키를 수정하세요"
+        }
     }
 
     func save() {
@@ -222,9 +210,11 @@ private struct MacroRow: View {
                     RoundedRectangle(cornerRadius: 4)
                         .stroke(Color.secondary.opacity(0.3))
                 )
-            Text("\(macro.text.count) / 10,000")
+            Text("\(macro.text.count) / \(MacroDefinition.maximumTextCountText)")
                 .font(.caption)
-                .foregroundStyle(macro.text.count > 10_000 ? .red : .secondary)
+                .foregroundStyle(
+                    macro.text.count > MacroDefinition.maximumTextCount ? .red : .secondary
+                )
 
             HStack {
                 Picker("후속 키", selection: trailingModeBinding) {
@@ -296,7 +286,7 @@ private struct MacroRow: View {
                     macro.trailingKey = .custom(keyCode: keyCode, modifiers: shortcut.modifiers)
                 case .function(let number):
                     macro.trailingKey = .custom(
-                        keyCode: KeyRecorderTranslator.keyCode(forFunction: number),
+                        keyCode: MacKeyCodePolicy.keyCode(forFunction: number),
                         modifiers: shortcut.modifiers
                     )
                 case .empty, .letter:

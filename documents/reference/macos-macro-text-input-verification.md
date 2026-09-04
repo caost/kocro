@@ -23,13 +23,15 @@ related:
 | 전체 XCTest | `xcodebuild test` | 90개 통과, 실패 0개 |
 | Thread Sanitizer XCTest | `xcodebuild test -enableThreadSanitizer YES` | 90개 통과, data race 보고 0개 |
 | Release 빌드 | `xcodebuild build -configuration Release` | 성공, ad hoc 서명과 Hardened Runtime을 적용한 `apps/macos/build/Build/Products/Release/Kocro.app` 생성 |
-| 100개 sample nearest-rank와 동시 수집 | `PostingLatencyRecorderTests` | 7개 통과, 첫 100개 제한·p50=50·p95=95·이전 결과 무효화 확인 |
+| 100개 샘플 nearest-rank와 동시 수집 | `PostingLatencyRecorderTests` | 7개 통과, 첫 100개 제한·p50=50·p95=95·이전 결과 무효화 확인 |
 | HID monitor 시작 실패 | `ShortcutCoordinatorTests.testHIDPermissionAndStartFailuresLeaveCarbonRegistered`의 `HIDSpy(starts: false)` | 통과, HID 실패 상태와 Carbon 등록 유지 확인 |
 | 금지 API와 실행 범위 | 정적 검색 | 금지 항목 0개 |
 
+표준·스펙 리뷰 지적 사항을 반영한 뒤 위 여섯 항목을 같은 명령으로 다시 실행했고 결과는 같았다. 테스트 90개 통과, Thread Sanitizer 90개 통과와 data race 0개, Release 빌드 성공, ad hoc 서명과 Hardened Runtime 유지, `codesign --verify --strict` 통과, 금지 API 0건이다.
+
 ## 실제 앱 검증
 
-아래 항목은 서명된 앱과 TCC 권한, F21~F24를 전송할 수 있는 하드웨어가 필요한 검증이다. 현재 checkpoint에서는 수행하지 않았으며 결과를 pass 또는 fail로 판정하지 않았다.
+아래 항목은 서명된 앱과 TCC 권한, F21~F24를 전송할 수 있는 하드웨어가 필요한 검증이다. 현재 checkpoint에서는 수행하지 않았으며 결과를 통과 또는 실패로 판정하지 않았다.
 
 | 대상·조건 | 실제 결과 | 판정 |
 | --- | --- | --- |
@@ -48,24 +50,26 @@ related:
 | 메뉴 바에서 로그인 시 실행 활성화 후 macOS 로그인 항목 표시 | 미실행 | 미판정 |
 | 로그인 시 실행 비활성화 후 macOS 로그인 항목 제거 | 미실행 | 미판정 |
 
+이 표와 아래 게시 지연 기준값은 실행 중인 macOS 데스크톱 세션에서 Release 앱에 Accessibility 권한을 부여하고 직접 키를 눌러야 채울 수 있다. 자동 테스트와 정적 검색으로는 대체할 수 없으므로 미실행 상태를 그대로 남긴다.
+
 ## Release 게시 지연 기준값
 
-첫 버전은 환경별 기준값 수집 단계이므로 통과 임계값을 두지 않는다. 측정 범위는 단축키 callback이 받은 instant부터 마지막 `CGEvent.post` 반환까지다. 대상 앱의 화면 반영 시간은 포함하지 않는다.
+첫 버전은 환경별 기준값 수집 단계이므로 통과 임계값을 두지 않는다. 측정 범위는 단축키 콜백이 받은 시점부터 마지막 `CGEvent.post` 반환까지다. 대상 앱의 화면 반영 시간은 포함하지 않는다.
 
 | 항목 | 값 |
 | --- | --- |
 | 빌드 | Release, 실제 측정 미실행 |
 | 입력 문자열 | ASCII `a` 100자, 실제 측정 미실행 |
-| sample 수 | 0개 |
+| 샘플 수 | 0개 |
 | 원시 ms | 실제 측정값 없음 |
 | p50 | 실제 측정값 없음 |
 | p95 | 실제 측정값 없음 |
-| queue 대기 | 측정 시 `queue empty`를 확인하고 이전 게시 완료 뒤 다음 키 입력 필요 |
-| 외부 process 시작 횟수 | 구현 정적 검색 0회, 실제 측정은 미판정 |
+| 큐 대기 | 측정 시 `큐 비어 있음`을 확인하고 이전 게시 완료 뒤 다음 키 입력 필요 |
+| 외부 프로세스 시작 횟수 | 구현 정적 검색 0회, 실제 측정은 미판정 |
 
-실제 측정은 `--measure-posting-latency` argument로 Release 앱을 한 번 시작한다. 측정 mode가 시작되면 이전 결과 파일을 제거하므로 새 결과가 생기기 전에는 해당 경로가 없어야 한다. 메뉴 바의 `측정 N/100`과 `queue empty`를 확인하면서 F13을 100회 입력한다. 결과 파일은 `~/Library/Application Support/com.caost.Kocro/posting-latency.json`이며 원시 100개 sample과 p50·p95가 있어야 한다.
+실제 측정은 `--measure-posting-latency` 인자로 Release 앱을 한 번 시작한다. 측정 모드가 시작되면 이전 결과 파일을 제거하므로 새 결과가 생기기 전에는 해당 경로가 없어야 한다. 메뉴 바의 `측정 N/100`과 `큐 비어 있음`을 확인하면서 F13을 100회 입력한다. 결과 파일은 `~/Library/Application Support/com.caost.Kocro/posting-latency.json`이며 원시 100개 샘플과 p50·p95가 있어야 한다.
 
-앱을 시작하기 전에 아래 준비 명령을 같은 shell에서 실행한다. 기존 결과 파일을 제거하지 못하면 앱을 시작하지 않고, 실행별 marker를 남긴다.
+앱을 시작하기 전에 아래 준비 명령을 같은 셸에서 실행한다. 기존 결과 파일을 제거하지 못하면 앱을 시작하지 않고, 실행별 표식을 남긴다.
 
 ```sh
 kocro_report="$HOME/Library/Application Support/com.caost.Kocro/posting-latency.json"
@@ -75,7 +79,7 @@ test ! -e "$kocro_report" &&
 open "$(pwd)/apps/macos/build/Build/Products/Release/Kocro.app" --args --measure-posting-latency
 ```
 
-100회 입력이 끝나면 같은 shell에서 아래 명령을 실행한다. `-nt`는 결과 파일이 실행별 marker보다 엄격하게 새 파일인지 확인하므로, 같은 초에 생성된 이전 파일도 현재 결과로 통과하지 않는다.
+100회 입력이 끝나면 같은 셸에서 아래 명령을 실행한다. `-nt`는 결과 파일이 실행별 표식보다 엄격하게 새 파일인지 확인하므로, 같은 초에 생성된 이전 파일도 현재 결과로 통과하지 않는다.
 
 ```sh
 test "$kocro_report" -nt "$kocro_marker" &&

@@ -7,6 +7,8 @@ final class AppDependencies: ObservableObject {
     let settings: SettingsViewModel
     let login: LoginItemController
 
+    private var terminationObserver: NSObjectProtocol?
+
     init() {
         let validator = SettingsValidator()
         let store = JSONSettingsStore(
@@ -53,6 +55,22 @@ final class AppDependencies: ObservableObject {
         settings.onSave = { [weak self] value in
             self?.save(value)
         }
+        // Cmd+Q 처럼 메뉴 바 종료 버튼을 거치지 않는 경로에서도 해제가 일어나야 한다.
+        terminationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak controller] _ in
+            MainActor.assumeIsolated {
+                controller?.shutdown()
+            }
+        }
+    }
+
+    deinit {
+        if let terminationObserver {
+            NotificationCenter.default.removeObserver(terminationObserver)
+        }
     }
 
     func menuDidOpen() {
@@ -62,7 +80,7 @@ final class AppDependencies: ObservableObject {
     }
 
     func settingsDidOpen() {
-        controller.openSettings()
+        controller.prepareSettingsDraft()
         settings.loadDraftIfNeeded(from: controller)
         settings.synchronizeStatus(from: controller)
     }

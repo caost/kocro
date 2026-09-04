@@ -17,7 +17,7 @@ final class AppControllerTests: XCTestCase {
         XCTAssertEqual(shortcuts.replaceCalls, [[]])
         XCTAssertFalse(app.showsReplaceWarning)
 
-        app.openSettings()
+        app.prepareSettingsDraft()
 
         XCTAssertEqual(app.draft.macros.count, 12)
         XCTAssertTrue(app.showsReplaceWarning)

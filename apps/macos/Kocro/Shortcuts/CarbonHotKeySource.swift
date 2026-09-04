@@ -114,15 +114,9 @@ final class CarbonHotKeySource: CarbonServing {
         case .letter(let letter):
             return MacKeyCodePolicy.keyCode(forLetter: letter).map(UInt32.init)
         case .function(let number):
-            return functionKeyCodes[number].map(UInt32.init)
+            return MacKeyCodePolicy.keyCode(forFunction: number).map(UInt32.init)
         }
     }
-
-    private static let functionKeyCodes: [Int: UInt16] = [
-        1: 122, 2: 120, 3: 99, 4: 118, 5: 96, 6: 97, 7: 98,
-        8: 100, 9: 101, 10: 109, 11: 103, 12: 111, 13: 105,
-        14: 107, 15: 113, 16: 106, 17: 64, 18: 79, 19: 80, 20: 90,
-    ]
 }
 
 private final class CarbonCallbackContext: @unchecked Sendable {

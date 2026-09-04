@@ -25,10 +25,6 @@ enum KeyRecorderTranslator {
         }
         return .custom(keyCode: keyCode, modifiers: ModifierSet(eventModifiers))
     }
-
-    static func keyCode(forFunction number: Int) -> UInt16? {
-        MacKeyCodePolicy.keyCode(forFunction: number)
-    }
 }
 
 struct KeyRecorder: NSViewRepresentable {
