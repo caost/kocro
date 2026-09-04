@@ -48,6 +48,23 @@ final class JSONSettingsStoreTests: XCTestCase {
         ) {
             XCTAssertTrue($0 is StoreError)
         }
+
+        var unsupportedLetter = AppSettings.defaults
+        unsupportedLetter.macros[0].isEnabled = true
+        unsupportedLetter.macros[0].text = "x"
+        unsupportedLetter.macros[0].shortcut = .init(
+            key: .letter("1"),
+            modifiers: .command
+        )
+        let unsupportedLetterData = try JSONEncoder().encode(unsupportedLetter)
+        XCTAssertThrowsError(
+            try JSONSettingsStore(
+                file: MemorySettingsFile(contents: unsupportedLetterData),
+                validator: .init()
+            ).load()
+        ) {
+            XCTAssertTrue($0 is StoreError)
+        }
     }
 
     func testValidationAndWriteFailuresLeaveExistingBytesUnchanged() throws {

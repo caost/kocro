@@ -25,11 +25,11 @@ struct SettingsValidator {
             guard macro.text.count <= 10_000 else {
                 throw ValidationError.textTooLong
             }
-            if let trailingKey = macro.trailingKey {
-                try validateTrailing(trailingKey)
-            }
             guard macro.isEnabled else {
                 continue
+            }
+            if let trailingKey = macro.trailingKey {
+                try validateTrailing(trailingKey)
             }
             guard !macro.text.isEmpty else {
                 throw ValidationError.emptyText
@@ -49,8 +49,7 @@ struct SettingsValidator {
         case .empty:
             throw ValidationError.emptyShortcut
         case .letter(let letter):
-            guard letter.count == 1,
-                  letter.unicodeScalars.allSatisfy(\.isASCII),
+            guard MacKeyCodePolicy.keyCode(forLetter: letter) != nil,
                   !shortcut.modifiers.isEmpty else {
                 throw ValidationError.modifierRequired
             }

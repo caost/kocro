@@ -112,18 +112,11 @@ final class CarbonHotKeySource: CarbonServing {
         case .keyCode(let code):
             return UInt32(code)
         case .letter(let letter):
-            return letterKeyCodes[letter.lowercased()].map(UInt32.init)
+            return MacKeyCodePolicy.keyCode(forLetter: letter).map(UInt32.init)
         case .function(let number):
             return functionKeyCodes[number].map(UInt32.init)
         }
     }
-
-    private static let letterKeyCodes: [String: UInt16] = [
-        "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6,
-        "x": 7, "c": 8, "v": 9, "b": 11, "q": 12, "w": 13, "e": 14,
-        "r": 15, "y": 16, "t": 17, "o": 31, "u": 32, "i": 34, "p": 35,
-        "l": 37, "j": 38, "k": 40, "n": 45, "m": 46,
-    ]
 
     private static let functionKeyCodes: [Int: UInt16] = [
         1: 122, 2: 120, 3: 99, 4: 118, 5: 96, 6: 97, 7: 98,

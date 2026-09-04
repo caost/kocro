@@ -68,6 +68,9 @@ final class SettingsValidatorTests: XCTestCase {
         XCTAssertNoThrow(
             try validator.validateShortcut(.init(key: .letter("a"), modifiers: [.command]))
         )
+        XCTAssertThrowsError(
+            try validator.validateShortcut(.init(key: .letter("1"), modifiers: [.command]))
+        )
         XCTAssertNoThrow(
             try validator.validateShortcut(.init(key: .keyCode(0), modifiers: [.control]))
         )
@@ -188,7 +191,10 @@ final class SettingsValidatorTests: XCTestCase {
                     isEnabled: false,
                     shortcut: shortcut,
                     text: "",
-                    trailingKey: nil
+                    trailingKey: .custom(
+                        keyCode: nil,
+                        modifiers: ModifierSet(rawValue: 0x10)
+                    )
                 )
             }
         )
