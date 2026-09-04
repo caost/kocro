@@ -7,6 +7,7 @@ struct ModifierSet: OptionSet, Codable, Hashable, Sendable {
     static let control = Self(rawValue: 2)
     static let option = Self(rawValue: 4)
     static let shift = Self(rawValue: 8)
+    static let supported: Self = [.command, .control, .option, .shift]
 }
 
 enum ShortcutKey: Codable, Hashable, Sendable {

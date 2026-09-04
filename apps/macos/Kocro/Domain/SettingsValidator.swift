@@ -7,6 +7,7 @@ enum ValidationError: Error {
     case emptyShortcut
     case modifierRequired
     case unsupportedFunction
+    case unsupportedModifiers
     case HIDModifiers
     case duplicateShortcut
     case invalidTrailing
@@ -43,6 +44,7 @@ struct SettingsValidator {
     }
 
     func validateShortcut(_ shortcut: ShortcutDefinition) throws {
+        try validateModifiers(shortcut.modifiers)
         switch shortcut.key {
         case .empty:
             throw ValidationError.emptyShortcut
@@ -74,12 +76,19 @@ struct SettingsValidator {
         switch trailingKey {
         case .enter, .space, .tab:
             return
-        case .custom(let keyCode?, _):
+        case .custom(let keyCode?, let modifiers):
+            try validateModifiers(modifiers)
             guard MacKeyCodePolicy.isAllowedTrailingKeyCode(keyCode) else {
                 throw ValidationError.invalidTrailing
             }
         case .custom(nil, _), .customFunction:
             throw ValidationError.invalidTrailing
+        }
+    }
+
+    private func validateModifiers(_ modifiers: ModifierSet) throws {
+        guard modifiers.rawValue & ~ModifierSet.supported.rawValue == 0 else {
+            throw ValidationError.unsupportedModifiers
         }
     }
 }

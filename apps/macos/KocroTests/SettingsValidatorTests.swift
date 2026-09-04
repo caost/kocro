@@ -105,6 +105,11 @@ final class SettingsValidatorTests: XCTestCase {
         XCTAssertThrowsError(
             try validator.validateShortcut(.init(key: .keyCode(55), modifiers: [.command]))
         )
+
+        let unsupported = ModifierSet(rawValue: ModifierSet.command.rawValue | 0x10)
+        XCTAssertThrowsError(
+            try validator.validateShortcut(.init(key: .keyCode(0), modifiers: unsupported))
+        )
     }
 
     func testTrailingKeyMatrix() {
@@ -119,6 +124,11 @@ final class SettingsValidatorTests: XCTestCase {
         )
         XCTAssertThrowsError(
             try validator.validateTrailing(.custom(keyCode: 56, modifiers: []))
+        )
+        XCTAssertThrowsError(
+            try validator.validateTrailing(
+                .custom(keyCode: 0, modifiers: ModifierSet(rawValue: 0x10))
+            )
         )
         for number in 21...35 {
             XCTAssertThrowsError(try validator.validateTrailing(.customFunction(number)))

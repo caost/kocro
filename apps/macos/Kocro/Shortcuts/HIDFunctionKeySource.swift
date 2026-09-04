@@ -107,6 +107,7 @@ final class HIDFunctionKeySource: HIDServing {
         }
         guard let action else { return }
         beforeEmit()
+        guard permissionCheck() else { return }
         action()
     }
 

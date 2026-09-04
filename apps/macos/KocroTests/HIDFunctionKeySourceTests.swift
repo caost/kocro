@@ -48,7 +48,7 @@ final class HIDFunctionKeySourceTests: XCTestCase {
         XCTAssertEqual(HIDFunctionKeySource.matchingUsages([21, 24]), [0x70, 0x73])
         let api = HIDAPISpy()
         let sink = TriggerSpy()
-        let source = HIDFunctionKeySource(api: api)
+        let source = HIDFunctionKeySource(api: api, permissionCheck: { true })
         source.onFunction = { _, function, instant in sink.call(function, instant) }
 
         XCTAssertNotNil(source.start(functions: [21]))
@@ -64,10 +64,27 @@ final class HIDFunctionKeySourceTests: XCTestCase {
         XCTAssertEqual(sink.functions, [21, 21])
     }
 
+    func testPermissionRevokedBeforeCallbackEmissionSuppressesTrigger() {
+        let api = HIDAPISpy()
+        let sink = TriggerSpy()
+        var permission = true
+        let source = HIDFunctionKeySource(
+            api: api,
+            beforeEmit: { permission = false },
+            permissionCheck: { permission }
+        )
+        source.onFunction = { _, function, instant in sink.call(function, instant) }
+
+        XCTAssertNotNil(source.start(functions: [21]))
+        api.send(usage: 0x70, value: 1)
+
+        XCTAssertTrue(sink.functions.isEmpty)
+    }
+
     func testStopAndRestartIgnoreStaleCallbacksDuringConcurrentDelivery() {
         let api = HIDAPISpy()
         let sink = TriggerSpy()
-        let source = HIDFunctionKeySource(api: api)
+        let source = HIDFunctionKeySource(api: api, permissionCheck: { true })
         source.onFunction = { _, function, instant in sink.call(function, instant) }
         let staleInstant = ContinuousClock.now
         let currentInstant = ContinuousClock.now
