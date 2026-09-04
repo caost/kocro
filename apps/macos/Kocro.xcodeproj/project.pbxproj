@@ -20,6 +20,14 @@
 		A1000000000000000000000B /* TestDoubles.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000D /* TestDoubles.swift */; };
 		A1000000000000000000000C /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000E /* SettingsStore.swift */; };
 		A1000000000000000000000D /* JSONSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000F /* JSONSettingsStore.swift */; };
+		A1000000000000000000000E /* ShortcutCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* ShortcutCoordinatorTests.swift */; };
+		A1000000000000000000000F /* HIDFunctionKeySourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* HIDFunctionKeySourceTests.swift */; };
+		A10000000000000000000010 /* ShortcutCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000012 /* ShortcutCoordinator.swift */; };
+		A10000000000000000000011 /* CarbonHotKeySource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* CarbonHotKeySource.swift */; };
+		A10000000000000000000012 /* HIDFunctionKeySource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* HIDFunctionKeySource.swift */; };
+		A10000000000000000000013 /* CarbonHotKeySourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000015 /* CarbonHotKeySourceTests.swift */; };
+		A10000000000000000000014 /* PermissionClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000016 /* PermissionClientTests.swift */; };
+		A10000000000000000000015 /* PermissionClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000017 /* PermissionClient.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -48,6 +56,14 @@
 		A2000000000000000000000D /* TestDoubles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestDoubles.swift; sourceTree = "<group>"; };
 		A2000000000000000000000E /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		A2000000000000000000000F /* JSONSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONSettingsStore.swift; sourceTree = "<group>"; };
+		A20000000000000000000010 /* ShortcutCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutCoordinatorTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000011 /* HIDFunctionKeySourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HIDFunctionKeySourceTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000012 /* ShortcutCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutCoordinator.swift; sourceTree = "<group>"; };
+		A20000000000000000000013 /* CarbonHotKeySource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarbonHotKeySource.swift; sourceTree = "<group>"; };
+		A20000000000000000000014 /* HIDFunctionKeySource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HIDFunctionKeySource.swift; sourceTree = "<group>"; };
+		A20000000000000000000015 /* CarbonHotKeySourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarbonHotKeySourceTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000016 /* PermissionClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionClientTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000017 /* PermissionClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionClient.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -88,6 +104,8 @@
 				A70000000000000000000003 /* App */,
 				A70000000000000000000007 /* Domain */,
 				A70000000000000000000009 /* Persistence */,
+				A7000000000000000000000A /* Shortcuts */,
+				A7000000000000000000000B /* Input */,
 			);
 			path = Kocro;
 			sourceTree = "<group>";
@@ -106,6 +124,10 @@
 				A20000000000000000000002 /* KocroSmokeTests.swift */,
 				A20000000000000000000009 /* SettingsValidatorTests.swift */,
 				A2000000000000000000000C /* JSONSettingsStoreTests.swift */,
+				A20000000000000000000010 /* ShortcutCoordinatorTests.swift */,
+				A20000000000000000000011 /* HIDFunctionKeySourceTests.swift */,
+				A20000000000000000000015 /* CarbonHotKeySourceTests.swift */,
+				A20000000000000000000016 /* PermissionClientTests.swift */,
 				A70000000000000000000008 /* Support */,
 			);
 			path = KocroTests;
@@ -155,6 +177,24 @@
 				A2000000000000000000000F /* JSONSettingsStore.swift */,
 			);
 			path = Persistence;
+			sourceTree = "<group>";
+		};
+		A7000000000000000000000A /* Shortcuts */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000012 /* ShortcutCoordinator.swift */,
+				A20000000000000000000013 /* CarbonHotKeySource.swift */,
+				A20000000000000000000014 /* HIDFunctionKeySource.swift */,
+			);
+			path = Shortcuts;
+			sourceTree = "<group>";
+		};
+		A7000000000000000000000B /* Input */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000017 /* PermissionClient.swift */,
+			);
+			path = Input;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -231,8 +271,8 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		A90000000000000000000001 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001 /* KocroApp.swift in Sources */, A10000000000000000000008 /* MacroModels.swift in Sources */, A10000000000000000000009 /* SettingsValidator.swift in Sources */, A1000000000000000000000C /* SettingsStore.swift in Sources */, A1000000000000000000000D /* JSONSettingsStore.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
-		A90000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000002 /* KocroSmokeTests.swift in Sources */, A10000000000000000000007 /* SettingsValidatorTests.swift in Sources */, A1000000000000000000000A /* JSONSettingsStoreTests.swift in Sources */, A1000000000000000000000B /* TestDoubles.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
+		A90000000000000000000001 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001 /* KocroApp.swift in Sources */, A10000000000000000000008 /* MacroModels.swift in Sources */, A10000000000000000000009 /* SettingsValidator.swift in Sources */, A1000000000000000000000C /* SettingsStore.swift in Sources */, A1000000000000000000000D /* JSONSettingsStore.swift in Sources */, A10000000000000000000010 /* ShortcutCoordinator.swift in Sources */, A10000000000000000000011 /* CarbonHotKeySource.swift in Sources */, A10000000000000000000012 /* HIDFunctionKeySource.swift in Sources */, A10000000000000000000015 /* PermissionClient.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
+		A90000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000002 /* KocroSmokeTests.swift in Sources */, A10000000000000000000007 /* SettingsValidatorTests.swift in Sources */, A1000000000000000000000A /* JSONSettingsStoreTests.swift in Sources */, A1000000000000000000000B /* TestDoubles.swift in Sources */, A1000000000000000000000E /* ShortcutCoordinatorTests.swift in Sources */, A1000000000000000000000F /* HIDFunctionKeySourceTests.swift in Sources */, A10000000000000000000013 /* CarbonHotKeySourceTests.swift in Sources */, A10000000000000000000014 /* PermissionClientTests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
