@@ -133,6 +133,12 @@ final class EventBatchFactoryTests: XCTestCase {
         )
 
         XCTAssertEqual(String(utf16CodeUnits: units, count: actualLength), text)
+        // 유니코드 이벤트는 flags 를 비워야 한다. 비우지 않으면 트리거 단축키의 보조 키(⌃⌥⌘ 등)가
+        // .cghidEventTap 주입 시 병합되어 대상 앱이 문자를 단축키로 해석하고 삽입하지 않는다.
+        XCTAssertTrue(
+            unicodeEvent.flags.isEmpty,
+            "유니코드 이벤트 flags 가 비어 있지 않다: \(unicodeEvent.flags.rawValue)"
+        )
 
         let expectedFlags: CGEventFlags = [.maskCommand, .maskShift]
         let down = try XCTUnwrap(api.create(.keyDown(36, [.command, .shift])))

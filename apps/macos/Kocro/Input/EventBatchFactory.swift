@@ -166,6 +166,9 @@ final class SystemEventAPI: EventAPI {
                     unicodeString: buffer.baseAddress!
                 )
             }
+            // flags 를 비워 트리거 단축키의 보조 키가 게시 시점에 병합되지 않게 한다. 비우지 않으면
+            // ⌃⌥⌘ 같은 보조 키가 눌린 상태에서 대상 앱이 문자를 단축키로 해석해 삽입하지 않는다.
+            event.flags = []
             return event
         case .keyDown(let keyCode, let modifiers):
             return keyEvent(keyCode: keyCode, keyDown: true, modifiers: modifiers)
