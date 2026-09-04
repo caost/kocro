@@ -1,5 +1,6 @@
 import Carbon
 import Foundation
+import ServiceManagement
 @testable import Kocro
 
 final class MemorySettingsFile: SettingsFile {
@@ -542,5 +543,33 @@ final class QueueSpy: ExecutionQueueing, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return body()
+    }
+}
+
+@MainActor
+final class LoginServiceSpy: LoginService {
+    enum Failure: Error { case denied }
+
+    var status: SMAppService.Status
+    var registerError: Error?
+    var unregisterError: Error?
+    var statusAfterRegister: SMAppService.Status = .enabled
+    private(set) var registerCount = 0
+    private(set) var unregisterCount = 0
+
+    init(status: SMAppService.Status) {
+        self.status = status
+    }
+
+    func register() throws {
+        registerCount += 1
+        if let registerError { throw registerError }
+        status = statusAfterRegister
+    }
+
+    func unregister() throws {
+        unregisterCount += 1
+        if let unregisterError { throw unregisterError }
+        status = .notRegistered
     }
 }

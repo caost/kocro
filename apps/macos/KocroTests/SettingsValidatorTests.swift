@@ -125,6 +125,50 @@ final class SettingsValidatorTests: XCTestCase {
         }
     }
 
+    func testRawKeyPolicyRejectsVolumeKeysAndAcceptsEveryKeypadDigit() {
+        for volumeKeyCode: UInt16 in [72, 73, 74] {
+            XCTAssertThrowsError(
+                try validator.validateShortcut(
+                    .init(key: .keyCode(volumeKeyCode), modifiers: .command)
+                )
+            )
+            XCTAssertThrowsError(
+                try validator.validateTrailing(
+                    .custom(keyCode: volumeKeyCode, modifiers: [])
+                )
+            )
+        }
+
+        let keypadDigits: [UInt16] = [82, 83, 84, 85, 86, 87, 88, 89, 91, 92]
+        for keyCode in keypadDigits {
+            XCTAssertNoThrow(
+                try validator.validateShortcut(
+                    .init(key: .keyCode(keyCode), modifiers: .control)
+                )
+            )
+            XCTAssertNoThrow(
+                try validator.validateTrailing(
+                    .custom(keyCode: keyCode, modifiers: [])
+                )
+            )
+        }
+    }
+
+    func testRawKeyPolicyAcceptsStableJISKeys() {
+        for keyCode: UInt16 in [93, 94, 95] {
+            XCTAssertNoThrow(
+                try validator.validateShortcut(
+                    .init(key: .keyCode(keyCode), modifiers: .command)
+                )
+            )
+            XCTAssertNoThrow(
+                try validator.validateTrailing(
+                    .custom(keyCode: keyCode, modifiers: [])
+                )
+            )
+        }
+    }
+
     func testInactiveDraftsAllowEmptyAndDuplicateShortcuts() {
         let shortcut = ShortcutDefinition(key: .empty, modifiers: [])
         let settings = AppSettings(

@@ -13,10 +13,6 @@ enum ValidationError: Error {
 }
 
 struct SettingsValidator {
-    private let modifierKeyCodes: Set<UInt16> = [
-        54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
-    ]
-
     func validate(_ settings: AppSettings) throws -> AppSettings {
         var identifiers = Set<UUID>()
         var activeShortcuts = Set<ShortcutDefinition>()
@@ -57,7 +53,7 @@ struct SettingsValidator {
                 throw ValidationError.modifierRequired
             }
         case .keyCode(let keyCode):
-            guard !modifierKeyCodes.contains(keyCode),
+            guard MacKeyCodePolicy.isAllowedShortcutKeyCode(keyCode),
                   !shortcut.modifiers.isEmpty else {
                 throw ValidationError.modifierRequired
             }
@@ -79,7 +75,7 @@ struct SettingsValidator {
         case .enter, .space, .tab:
             return
         case .custom(let keyCode?, _):
-            guard !modifierKeyCodes.contains(keyCode) else {
+            guard MacKeyCodePolicy.isAllowedTrailingKeyCode(keyCode) else {
                 throw ValidationError.invalidTrailing
             }
         case .custom(nil, _), .customFunction:

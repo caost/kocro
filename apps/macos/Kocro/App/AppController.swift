@@ -145,6 +145,14 @@ final class AppController: ObservableObject {
         return .ready
     }
 
+    var statusText: String {
+        MenuBarViewModel(statuses: [overallStatus], registrations: []).statusText
+    }
+
+    var permissionState: PermissionState {
+        permissions.state
+    }
+
     init(
         store: SettingsStoring,
         shortcuts: ShortcutCoordinating,
@@ -206,6 +214,18 @@ final class AppController: ObservableObject {
             showsReplaceWarning = true
         }
         refreshPermissions()
+    }
+
+    func requestAccessibility() {
+        permissions.requestAccessibility()
+    }
+
+    func requestInputMonitoring() {
+        permissions.requestInputMonitoring()
+    }
+
+    func openSettings(_ kind: PrivacyKind) {
+        permissions.openSettings(kind)
     }
 
     func save() {

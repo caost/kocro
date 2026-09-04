@@ -35,10 +35,24 @@ struct ShortcutDefinition: Codable, Hashable, Sendable {
     }
 
     var displayName: String {
-        if let functionNumber {
-            return "F\(functionNumber)"
+        var prefix = ""
+        if modifiers.contains(.control) { prefix += "⌃" }
+        if modifiers.contains(.option) { prefix += "⌥" }
+        if modifiers.contains(.shift) { prefix += "⇧" }
+        if modifiers.contains(.command) { prefix += "⌘" }
+
+        let keyName: String
+        switch key {
+        case .empty:
+            keyName = "설정 안 됨"
+        case .letter(let letter):
+            keyName = letter.uppercased()
+        case .keyCode(let keyCode):
+            keyName = "Key \(keyCode)"
+        case .function(let number):
+            keyName = "F\(number)"
         }
-        return String(describing: key)
+        return prefix + keyName
     }
 }
 
