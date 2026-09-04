@@ -1,0 +1,89 @@
+import Foundation
+
+enum ValidationError: Error {
+    case duplicateID
+    case textTooLong
+    case emptyText
+    case emptyShortcut
+    case modifierRequired
+    case unsupportedFunction
+    case HIDModifiers
+    case duplicateShortcut
+    case invalidTrailing
+}
+
+struct SettingsValidator {
+    private let modifierKeyCodes: Set<UInt16> = [
+        54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
+    ]
+
+    func validate(_ settings: AppSettings) throws -> AppSettings {
+        var identifiers = Set<UUID>()
+        var activeShortcuts = Set<ShortcutDefinition>()
+
+        for macro in settings.macros {
+            guard identifiers.insert(macro.id).inserted else {
+                throw ValidationError.duplicateID
+            }
+            guard macro.text.count <= 10_000 else {
+                throw ValidationError.textTooLong
+            }
+            if let trailingKey = macro.trailingKey {
+                try validateTrailing(trailingKey)
+            }
+            guard macro.isEnabled else {
+                continue
+            }
+            guard !macro.text.isEmpty else {
+                throw ValidationError.emptyText
+            }
+            try validateShortcut(macro.shortcut)
+            guard activeShortcuts.insert(macro.shortcut).inserted else {
+                throw ValidationError.duplicateShortcut
+            }
+        }
+
+        return settings
+    }
+
+    func validateShortcut(_ shortcut: ShortcutDefinition) throws {
+        switch shortcut.key {
+        case .empty:
+            throw ValidationError.emptyShortcut
+        case .letter(let letter):
+            guard letter.count == 1,
+                  letter.unicodeScalars.allSatisfy(\.isASCII),
+                  !shortcut.modifiers.isEmpty else {
+                throw ValidationError.modifierRequired
+            }
+        case .keyCode(let keyCode):
+            guard !modifierKeyCodes.contains(keyCode),
+                  !shortcut.modifiers.isEmpty else {
+                throw ValidationError.modifierRequired
+            }
+        case .function(let number):
+            guard (1...24).contains(number) else {
+                throw ValidationError.unsupportedFunction
+            }
+            if number <= 12, shortcut.modifiers.isEmpty {
+                throw ValidationError.modifierRequired
+            }
+            if (21...24).contains(number), !shortcut.modifiers.isEmpty {
+                throw ValidationError.HIDModifiers
+            }
+        }
+    }
+
+    func validateTrailing(_ trailingKey: TrailingKey) throws {
+        switch trailingKey {
+        case .enter, .space, .tab:
+            return
+        case .custom(let keyCode?, _):
+            guard !modifierKeyCodes.contains(keyCode) else {
+                throw ValidationError.invalidTrailing
+            }
+        case .custom(nil, _), .customFunction:
+            throw ValidationError.invalidTrailing
+        }
+    }
+}

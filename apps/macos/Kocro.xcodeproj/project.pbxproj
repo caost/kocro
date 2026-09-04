@@ -1,0 +1,258 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* KocroApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* KocroApp.swift */; };
+		A10000000000000000000002 /* KocroSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* KocroSmokeTests.swift */; };
+		A10000000000000000000003 /* Carbon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* Carbon.framework */; };
+		A10000000000000000000004 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* IOKit.framework */; };
+		A10000000000000000000005 /* ApplicationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* ApplicationServices.framework */; };
+		A10000000000000000000006 /* ServiceManagement.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* ServiceManagement.framework */; };
+		A10000000000000000000007 /* SettingsValidatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* SettingsValidatorTests.swift */; };
+		A10000000000000000000008 /* MacroModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* MacroModels.swift */; };
+		A10000000000000000000009 /* SettingsValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000B /* SettingsValidator.swift */; };
+		A1000000000000000000000A /* JSONSettingsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000C /* JSONSettingsStoreTests.swift */; };
+		A1000000000000000000000B /* TestDoubles.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000D /* TestDoubles.swift */; };
+		A1000000000000000000000C /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000E /* SettingsStore.swift */; };
+		A1000000000000000000000D /* JSONSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000F /* JSONSettingsStore.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A30000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A40000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A50000000000000000000001;
+			remoteInfo = Kocro;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		A20000000000000000000001 /* KocroApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KocroApp.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* KocroSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KocroSmokeTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* Carbon.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Carbon.framework; path = System/Library/Frameworks/Carbon.framework; sourceTree = SDKROOT; };
+		A20000000000000000000004 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
+		A20000000000000000000005 /* ApplicationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ApplicationServices.framework; path = System/Library/Frameworks/ApplicationServices.framework; sourceTree = SDKROOT; };
+		A20000000000000000000006 /* ServiceManagement.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ServiceManagement.framework; path = System/Library/Frameworks/ServiceManagement.framework; sourceTree = SDKROOT; };
+		A20000000000000000000007 /* Kocro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kocro.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000008 /* KocroTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KocroTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000009 /* SettingsValidatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsValidatorTests.swift; sourceTree = "<group>"; };
+		A2000000000000000000000A /* MacroModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacroModels.swift; sourceTree = "<group>"; };
+		A2000000000000000000000B /* SettingsValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsValidator.swift; sourceTree = "<group>"; };
+		A2000000000000000000000C /* JSONSettingsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONSettingsStoreTests.swift; sourceTree = "<group>"; };
+		A2000000000000000000000D /* TestDoubles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestDoubles.swift; sourceTree = "<group>"; };
+		A2000000000000000000000E /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
+		A2000000000000000000000F /* JSONSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONSettingsStore.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A60000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000003 /* Carbon.framework in Frameworks */,
+				A10000000000000000000004 /* IOKit.framework in Frameworks */,
+				A10000000000000000000005 /* ApplicationServices.framework in Frameworks */,
+				A10000000000000000000006 /* ServiceManagement.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A60000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A70000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A70000000000000000000002 /* Kocro */,
+				A70000000000000000000004 /* KocroTests */,
+				A70000000000000000000005 /* Frameworks */,
+				A70000000000000000000006 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A70000000000000000000002 /* Kocro */ = {
+			isa = PBXGroup;
+			children = (
+				A70000000000000000000003 /* App */,
+				A70000000000000000000007 /* Domain */,
+				A70000000000000000000009 /* Persistence */,
+			);
+			path = Kocro;
+			sourceTree = "<group>";
+		};
+		A70000000000000000000003 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000001 /* KocroApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A70000000000000000000004 /* KocroTests */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000002 /* KocroSmokeTests.swift */,
+				A20000000000000000000009 /* SettingsValidatorTests.swift */,
+				A2000000000000000000000C /* JSONSettingsStoreTests.swift */,
+				A70000000000000000000008 /* Support */,
+			);
+			path = KocroTests;
+			sourceTree = "<group>";
+		};
+		A70000000000000000000005 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000003 /* Carbon.framework */,
+				A20000000000000000000004 /* IOKit.framework */,
+				A20000000000000000000005 /* ApplicationServices.framework */,
+				A20000000000000000000006 /* ServiceManagement.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		A70000000000000000000006 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000007 /* Kocro.app */,
+				A20000000000000000000008 /* KocroTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A70000000000000000000007 /* Domain */ = {
+			isa = PBXGroup;
+			children = (
+				A2000000000000000000000A /* MacroModels.swift */,
+				A2000000000000000000000B /* SettingsValidator.swift */,
+			);
+			path = Domain;
+			sourceTree = "<group>";
+		};
+		A70000000000000000000008 /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				A2000000000000000000000D /* TestDoubles.swift */,
+			);
+			path = Support;
+			sourceTree = "<group>";
+		};
+		A70000000000000000000009 /* Persistence */ = {
+			isa = PBXGroup;
+			children = (
+				A2000000000000000000000E /* SettingsStore.swift */,
+				A2000000000000000000000F /* JSONSettingsStore.swift */,
+			);
+			path = Persistence;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A50000000000000000000001 /* Kocro */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A80000000000000000000001 /* Build configuration list for PBXNativeTarget "Kocro" */;
+			buildPhases = (
+				A90000000000000000000001 /* Sources */,
+				A60000000000000000000001 /* Frameworks */,
+				AA0000000000000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Kocro;
+			productName = Kocro;
+			productReference = A20000000000000000000007 /* Kocro.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A50000000000000000000002 /* KocroTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A80000000000000000000002 /* Build configuration list for PBXNativeTarget "KocroTests" */;
+			buildPhases = (
+				A90000000000000000000002 /* Sources */,
+				A60000000000000000000002 /* Frameworks */,
+				AA0000000000000000000002 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AB0000000000000000000001 /* PBXTargetDependency */,
+			);
+			name = KocroTests;
+			productName = KocroTests;
+			productReference = A20000000000000000000008 /* KocroTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A40000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					A50000000000000000000001 = { CreatedOnToolsVersion = 26.0; };
+					A50000000000000000000002 = { CreatedOnToolsVersion = 26.0; TestTargetID = A50000000000000000000001; };
+				};
+			};
+			buildConfigurationList = A80000000000000000000003 /* Build configuration list for PBXProject "Kocro" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base);
+			mainGroup = A70000000000000000000001;
+			productRefGroup = A70000000000000000000006 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A50000000000000000000001 /* Kocro */,
+				A50000000000000000000002 /* KocroTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		AA0000000000000000000001 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		AA0000000000000000000002 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A90000000000000000000001 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001 /* KocroApp.swift in Sources */, A10000000000000000000008 /* MacroModels.swift in Sources */, A10000000000000000000009 /* SettingsValidator.swift in Sources */, A1000000000000000000000C /* SettingsStore.swift in Sources */, A1000000000000000000000D /* JSONSettingsStore.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
+		A90000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000002 /* KocroSmokeTests.swift in Sources */, A10000000000000000000007 /* SettingsValidatorTests.swift in Sources */, A1000000000000000000000A /* JSONSettingsStoreTests.swift in Sources */, A1000000000000000000000B /* TestDoubles.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		AB0000000000000000000001 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A50000000000000000000001 /* Kocro */; targetProxy = A30000000000000000000001 /* PBXContainerItemProxy */; };
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		AC0000000000000000000001 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; ENABLE_STRICT_OBJC_MSGSEND = YES; GCC_C_LANGUAGE_STANDARD = gnu17; MACOSX_DEPLOYMENT_TARGET = 13.0; SDKROOT = macosx; SWIFT_VERSION = 5.0; }; name = Debug; };
+		AC0000000000000000000002 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; ENABLE_STRICT_OBJC_MSGSEND = YES; GCC_C_LANGUAGE_STANDARD = gnu17; MACOSX_DEPLOYMENT_TARGET = 13.0; SDKROOT = macosx; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_VERSION = 5.0; }; name = Release; };
+		AC0000000000000000000003 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGNING_ALLOWED = NO; COMBINE_HIDPI_IMAGES = YES; CURRENT_PROJECT_VERSION = 1; ENABLE_HARDENED_RUNTIME = YES; ENABLE_TESTABILITY = YES; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_LSUIElement = YES; MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = com.caost.Kocro; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_EMIT_LOC_STRINGS = YES; }; name = Debug; };
+		AC0000000000000000000004 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGNING_ALLOWED = NO; COMBINE_HIDPI_IMAGES = YES; CURRENT_PROJECT_VERSION = 1; ENABLE_HARDENED_RUNTIME = YES; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_LSUIElement = YES; MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = com.caost.Kocro; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_EMIT_LOC_STRINGS = YES; }; name = Release; };
+		AC0000000000000000000005 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGNING_ALLOWED = NO; GENERATE_INFOPLIST_FILE = YES; PRODUCT_BUNDLE_IDENTIFIER = com.caost.KocroTests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Kocro.app/Contents/MacOS/Kocro"; }; name = Debug; };
+		AC0000000000000000000006 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGNING_ALLOWED = NO; GENERATE_INFOPLIST_FILE = YES; PRODUCT_BUNDLE_IDENTIFIER = com.caost.KocroTests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Kocro.app/Contents/MacOS/Kocro"; }; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A80000000000000000000001 /* Build configuration list for PBXNativeTarget "Kocro" */ = {isa = XCConfigurationList; buildConfigurations = (AC0000000000000000000003 /* Debug */, AC0000000000000000000004 /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A80000000000000000000002 /* Build configuration list for PBXNativeTarget "KocroTests" */ = {isa = XCConfigurationList; buildConfigurations = (AC0000000000000000000005 /* Debug */, AC0000000000000000000006 /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A80000000000000000000003 /* Build configuration list for PBXProject "Kocro" */ = {isa = XCConfigurationList; buildConfigurations = (AC0000000000000000000001 /* Debug */, AC0000000000000000000002 /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = A40000000000000000000001 /* Project object */;
+}
