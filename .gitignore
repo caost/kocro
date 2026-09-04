@@ -5,5 +5,6 @@
 # Swift and Xcode
 .build/
 DerivedData/
+apps/macos/build/
 *.xcuserstate
 xcuserdata/
