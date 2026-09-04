@@ -128,6 +128,7 @@ final class AppController: ObservableObject {
     @Published private(set) var loadError: Error?
     @Published private(set) var saveError: Error?
     @Published private(set) var showsReplaceWarning = false
+    let measurementEnabled: Bool
 
     private let store: SettingsStoring
     private let shortcuts: ShortcutCoordinating
@@ -157,13 +158,15 @@ final class AppController: ObservableObject {
         store: SettingsStoring,
         shortcuts: ShortcutCoordinating,
         permissions: PermissionServing,
-        queue: ExecutionQueueing
+        queue: ExecutionQueueing,
+        measurementEnabled: Bool = false
     ) {
         let snapshots = ExecutionSnapshotStore()
         self.store = store
         self.shortcuts = shortcuts
         self.permissions = permissions
         self.queue = queue
+        self.measurementEnabled = measurementEnabled
         self.snapshots = snapshots
         router = TriggerRouter(
             snapshots: snapshots,

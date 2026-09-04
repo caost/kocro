@@ -36,6 +36,13 @@ struct MenuBarView: View {
             Text(lastResultText(result))
         }
 
+        if app.measurementEnabled {
+            Text(
+                "측정 \(app.measurementCount)/100 · "
+                    + (app.queueIsIdle ? "queue empty" : "게시 중")
+            )
+        }
+
         Divider()
 
         if !app.permissionState.accessibility {

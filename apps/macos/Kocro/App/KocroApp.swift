@@ -16,7 +16,11 @@ final class AppDependencies: ObservableObject {
         let carbon = CarbonHotKeySource()
         let hid = HIDFunctionKeySource()
         let permissions = PermissionClient(api: SystemPermissionAPI())
-        let poster = CoreGraphicsBatchPoster()
+        let measurementEnabled = MeasurementSession.isRequested()
+        let measurement = measurementEnabled
+            ? MeasurementSession(enabled: true)
+            : nil
+        let poster = CoreGraphicsBatchPoster(measurement: measurement)
         let queue = MacroExecutionQueue(
             poster: poster,
             accessibility: permissions.currentAccessibility
@@ -26,9 +30,15 @@ final class AppDependencies: ObservableObject {
             store: store,
             shortcuts: shortcuts,
             permissions: permissions,
-            queue: queue
+            queue: queue,
+            measurementEnabled: measurementEnabled
         )
 
+        measurement?.onProgress = { [weak controller] count in
+            Task { @MainActor in
+                controller?.updateMeasurementCount(count)
+            }
+        }
         controller.start()
         let settings = SettingsViewModel(
             settings: .init(macros: []),

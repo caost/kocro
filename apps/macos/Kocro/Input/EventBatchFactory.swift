@@ -102,15 +102,29 @@ protocol BatchPosting: AnyObject {
 final class EventBatchPoster<API: EventAPI>: BatchPosting {
     private let api: API
     private let factory: EventBatchFactory<API>
+    private let measurement: PostingMeasurementRecording?
+    private let measurementFailure: (Error) -> Void
 
-    init(api: API, maximumUTF16Units: Int) {
+    init(
+        api: API,
+        maximumUTF16Units: Int,
+        measurement: PostingMeasurementRecording? = nil,
+        measurementFailure: @escaping (Error) -> Void = PostingMeasurementLog.record
+    ) {
         self.api = api
         factory = EventBatchFactory(api: api, maximumUTF16Units: maximumUTF16Units)
+        self.measurement = measurement
+        self.measurementFailure = measurementFailure
     }
 
     func buildAndPost(_ request: ExecutionRequest) throws {
         let events = try factory.make(text: request.text, trailing: request.trailing)
         events.forEach(api.post)
+        do {
+            try measurement?.record(receivedAt: request.receivedAt, postedAt: .now)
+        } catch {
+            measurementFailure(error)
+        }
     }
 }
 
@@ -119,10 +133,14 @@ final class CoreGraphicsBatchPoster: BatchPosting {
 
     private let poster: EventBatchPoster<SystemEventAPI>
 
-    init(api: SystemEventAPI = SystemEventAPI()) {
+    init(
+        api: SystemEventAPI = SystemEventAPI(),
+        measurement: PostingMeasurementRecording? = nil
+    ) {
         poster = EventBatchPoster(
             api: api,
-            maximumUTF16Units: Self.maximumUTF16Units
+            maximumUTF16Units: Self.maximumUTF16Units,
+            measurement: measurement
         )
     }
 

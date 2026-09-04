@@ -206,6 +206,21 @@ final class AppControllerTests: XCTestCase {
         XCTAssertEqual(queue.requests.map(\.text), ["background value"])
     }
 
+    func testMeasurementModeIsExposedAndProgressUpdatesPublishedCount() {
+        let app = AppController(
+            store: StoreSpy(loadResult: .success(.init(macros: []))),
+            shortcuts: ShortcutSpy(),
+            permissions: PermissionSpy(),
+            queue: QueueSpy(),
+            measurementEnabled: true
+        )
+
+        app.updateMeasurementCount(37)
+
+        XCTAssertTrue(app.measurementEnabled)
+        XCTAssertEqual(app.measurementCount, 37)
+    }
+
     private func makeApp(
         store: StoreSpy = StoreSpy(loadResult: .success(.init(macros: []))),
         shortcuts: ShortcutSpy = ShortcutSpy(),

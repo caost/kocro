@@ -295,6 +295,7 @@ final class RecordingBatchPoster: BatchPosting {
 
     var requests: [ExecutionRequest] { locked { requestsStorage } }
     var texts: [String] { requests.map(\.text) }
+    var trailingKeys: [TrailingKey?] { requests.map(\.trailing) }
     var maximumConcurrent: Int { locked { maximumConcurrentStorage } }
 
     func buildAndPost(_ request: ExecutionRequest) throws {
@@ -360,9 +361,10 @@ final class BlockingPoster: BatchPosting {
 }
 
 final class StoreSpy: SettingsStoring {
-    let loadResult: Result<AppSettings, Error>
+    var loadResult: Result<AppSettings, Error>
     var saveError: Error?
     var onSave: (() -> Void)?
+    private var nextSaveError: Error?
     private(set) var savedValues: [AppSettings] = []
 
     init(loadResult: Result<AppSettings, Error>) {
@@ -375,8 +377,76 @@ final class StoreSpy: SettingsStoring {
 
     func save(_ value: AppSettings) throws {
         onSave?()
+        if let nextSaveError {
+            self.nextSaveError = nil
+            throw nextSaveError
+        }
         if let saveError { throw saveError }
         savedValues.append(value)
+        loadResult = .success(value)
+    }
+
+    func failOnce(_ error: Error) {
+        nextSaveError = error
+    }
+}
+
+@MainActor
+final class PipelineHarness {
+    let store: StoreSpy
+    let shortcuts = ShortcutSpy()
+    let poster = RecordingBatchPoster()
+    let queue: MacroExecutionQueue
+    let app: AppController
+
+    var postedTexts: [String] { poster.texts }
+    var postedTrailingKeys: [TrailingKey?] { poster.trailingKeys }
+    var maximumConcurrentPosts: Int { poster.maximumConcurrent }
+
+    init(accessibility: Bool) {
+        store = StoreSpy(loadResult: .success(.init(macros: [])))
+        queue = MacroExecutionQueue(
+            poster: poster,
+            accessibility: { accessibility }
+        )
+        app = AppController(
+            store: store,
+            shortcuts: shortcuts,
+            permissions: PermissionSpy(
+                state: .init(
+                    accessibility: accessibility,
+                    inputMonitoring: nil
+                ),
+                currentAccessibility: accessibility
+            ),
+            queue: queue
+        )
+    }
+
+    func install(_ macros: [MacroDefinition]) {
+        store.loadResult = .success(.init(macros: macros))
+        app.start()
+    }
+
+    func trigger(_ id: UUID) {
+        shortcuts.trigger(id)
+    }
+
+    func drain() async {
+        await queue.drain()
+    }
+
+    func editText(_ text: String) {
+        app.draft.macros[0].text = text
+    }
+
+    func failNextSave() {
+        store.failOnce(StoreError.io)
+    }
+
+    func saveAndTrigger() {
+        app.save()
+        shortcuts.trigger(app.runtime.macros[0].id)
     }
 }
 

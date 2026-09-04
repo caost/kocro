@@ -2,4 +2,4 @@
 
 설계와 구현에 참고하는 외부 사실을 정리한다.
 
-아직 활성 reference가 없다.
+- [macOS 매크로 텍스트 입력 검증 기록](./macos-macro-text-input-verification.md)
