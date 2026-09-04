@@ -1,0 +1,9 @@
+.DS_Store
+.harness/
+.worktrees/
+
+# Swift and Xcode
+.build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
