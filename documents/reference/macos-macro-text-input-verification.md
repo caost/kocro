@@ -22,7 +22,7 @@ related:
 | --- | --- | --- |
 | 전체 XCTest | `xcodebuild test` | 87개 통과, 실패 0개 |
 | Thread Sanitizer XCTest | `xcodebuild test -enableThreadSanitizer YES` | 87개 통과, data race 보고 0개 |
-| Release 빌드 | `xcodebuild build -configuration Release` | 성공, `apps/macos/build/Build/Products/Release/Kocro.app` 생성 |
+| Release 빌드 | `xcodebuild build -configuration Release` | 성공, ad hoc 서명과 Hardened Runtime을 적용한 `apps/macos/build/Build/Products/Release/Kocro.app` 생성 |
 | 100개 sample nearest-rank와 동시 수집 | `PostingLatencyRecorderTests` | 7개 통과, 첫 100개 제한·p50=50·p95=95·이전 결과 무효화 확인 |
 | HID monitor 시작 실패 | `ShortcutCoordinatorTests.testHIDPermissionAndStartFailuresLeaveCarbonRegistered`의 `HIDSpy(starts: false)` | 통과, HID 실패 상태와 Carbon 등록 유지 확인 |
 | 금지 API와 실행 범위 | 정적 검색 | 금지 항목 0개 |
