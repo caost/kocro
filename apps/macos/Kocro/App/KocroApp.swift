@@ -112,7 +112,7 @@ struct KocroApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
-        MenuBarExtra("Kocro", systemImage: "keyboard") {
+        MenuBarExtra("Kocro", image: "MenuBarIcon") {
             MenuBarView(
                 app: dependencies.controller,
                 login: dependencies.login,
