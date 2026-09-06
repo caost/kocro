@@ -8,14 +8,24 @@ enum OverallStatus: Equatable {
     case settingsError
 }
 
+enum AppControllerError: Error {
+    case shortcutCommitFailed
+}
+
 protocol ShortcutCoordinating: AnyObject {
     var onTrigger: ((UUID, ContinuousClock.Instant) -> Void)? { get set }
 
     @MainActor
-    func replace(
-        with macros: [MacroDefinition],
+    func prepareReplacement(with settings: AppSettings) -> any ShortcutReplacementCandidate
+
+    @MainActor
+    func commit(
+        _ candidate: any ShortcutReplacementCandidate,
         installSnapshots: ([UUID: RegistrationState]) -> Void
-    ) -> [UUID: RegistrationState]
+    ) -> [UUID: RegistrationState]?
+
+    @MainActor
+    func cancel(_ candidate: any ShortcutReplacementCandidate)
 
     @MainActor
     func shutdown()
@@ -136,6 +146,7 @@ final class AppController: ObservableObject {
     private let queue: ExecutionQueueing
     private let snapshots: ExecutionSnapshotStore
     private let router: TriggerRouter
+    private let validator = SettingsValidator()
 
     var overallStatus: OverallStatus {
         if loadError != nil { return .settingsError }
@@ -203,19 +214,18 @@ final class AppController: ObservableObject {
     func start() {
         do {
             let value = try store.load()
-            runtime = value
-            draft = value
             loadError = nil
             saveError = nil
             showsReplaceWarning = false
-            refreshPermissions(reconcileShortcuts: false)
-            reconcileShortcuts()
+            refreshPermissions(for: value)
+            guard installPersistedSettings(value, updateDraft: true) else {
+                loadError = AppControllerError.shortcutCommitFailed
+                return
+            }
         } catch {
             runtime = .init(macros: [])
             draft = .init(macros: [])
-            registration = shortcuts.replace(with: []) { [snapshots] _ in
-                snapshots.removeAll()
-            }
+            installPersistedSettings(.init(macros: []), updateDraft: false)
             loadError = error
             saveError = nil
             showsReplaceWarning = false
@@ -243,24 +253,31 @@ final class AppController: ObservableObject {
     }
 
     func save() {
+        let validated: AppSettings
         do {
-            try store.save(draft)
-            runtime = draft
-            loadError = nil
-            saveError = nil
-            showsReplaceWarning = false
-            refreshPermissions(reconcileShortcuts: false)
-            reconcileShortcuts()
+            validated = try validator.validate(draft)
         } catch {
             saveError = error
+            return
         }
+
+        let candidate = shortcuts.prepareReplacement(with: validated)
+        guard persist(candidate) else { return }
+        guard commitReplacement(candidate, snapshotSettings: candidate.settings) else {
+            saveError = AppControllerError.shortcutCommitFailed
+            return
+        }
+
+        runtime = candidate.settings
+        draft = candidate.settings
+        loadError = nil
+        saveError = nil
+        showsReplaceWarning = false
+        refreshPermissions(reconcileShortcuts: false)
     }
 
     func refreshPermissions(reconcileShortcuts: Bool = true) {
-        let needsHID = runtime.macros.contains {
-            $0.isEnabled && $0.shortcut.isHIDOnly
-        }
-        _ = permissions.refresh(needsHID: needsHID)
+        refreshPermissions(for: runtime)
         if reconcileShortcuts {
             self.reconcileShortcuts()
         }
@@ -277,9 +294,65 @@ final class AppController: ObservableObject {
     }
 
     private func reconcileShortcuts() {
-        let macros = runtime.macros
-        registration = shortcuts.replace(with: macros) { [snapshots] states in
-            snapshots.replace(macros, registration: states)
+        let persisted = runtime
+        let candidate = shortcuts.prepareReplacement(with: persisted)
+        _ = commitReplacement(
+            candidate,
+            snapshotSettings: persisted,
+            preservingRegistrationFailures: true
+        )
+    }
+
+    private func refreshPermissions(for settings: AppSettings) {
+        let needsHID = settings.macros.contains {
+            $0.isEnabled && $0.shortcut.isHIDOnly
         }
+        _ = permissions.refresh(needsHID: needsHID)
+    }
+
+    @discardableResult
+    private func installPersistedSettings(
+        _ settings: AppSettings,
+        updateDraft: Bool
+    ) -> Bool {
+        let candidate = shortcuts.prepareReplacement(with: settings)
+        guard commitReplacement(candidate, snapshotSettings: settings) else {
+            return false
+        }
+        runtime = settings
+        if updateDraft { draft = settings }
+        return true
+    }
+
+    private func persist(_ candidate: any ShortcutReplacementCandidate) -> Bool {
+        do {
+            try store.save(candidate.settings)
+            return true
+        } catch {
+            shortcuts.cancel(candidate)
+            saveError = error
+            return false
+        }
+    }
+
+    private func commitReplacement(
+        _ candidate: any ShortcutReplacementCandidate,
+        snapshotSettings: AppSettings,
+        preservingRegistrationFailures: Bool = false
+    ) -> Bool {
+        let retainedFailures = preservingRegistrationFailures
+            ? registration.filter { id, state in
+                state == .registrationFailed
+                    && candidate.states[id] == nil
+                    && snapshotSettings.macros.contains(where: { $0.id == id })
+            }
+            : [:]
+        guard let committed = shortcuts.commit(candidate, installSnapshots: { [snapshots] states in
+            snapshots.replace(snapshotSettings.macros, registration: states)
+        }) else {
+            return false
+        }
+        registration = committed.merging(retainedFailures) { current, _ in current }
+        return true
     }
 }

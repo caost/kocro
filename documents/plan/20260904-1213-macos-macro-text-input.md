@@ -1272,7 +1272,7 @@ builder는 커밋하지 않는다. conductor는 stage 6 검증 뒤 `wip(task-13)
 - Modify: `apps/macos/KocroTests/MacroPipelineIntegrationTests.swift`
 - Modify: `apps/macos/KocroTests/ViewModelTests.swift`
 
-- [ ] **Step 1: 충돌 후보의 저장 성공·실패 순서 테스트를 작성한다**
+- [x] **Step 1: 충돌 후보의 저장 성공·실패 순서 테스트를 작성한다**
 
 두 시나리오를 별도 테스트로 만든다. 첫째, F14 등록이 충돌하면 candidate의 해당 항목만 disabled이고 F13은 enabled인 값이 store에 저장된 뒤 runtime·snapshot·route가 commit되며, 항목 오류에는 충돌 안내가 남는다. 둘째, 같은 candidate 저장이 실패하면 `cancel`이 호출되고 runtime, draft의 사용자 편집, execution snapshot, 기존 registration ID route가 저장 전 값 그대로인지 확인한다. `StoreSpy.onSave` 안에서는 아직 기존 runtime과 route가 실행되는지도 검증한다. 다음 저장에서는 이전 충돌 안내가 새 결과로 교체되어야 한다.
 
@@ -1289,13 +1289,15 @@ XCTAssertEqual(app.runtime, old)
 XCTAssertEqual(app.draft, editedDraft)
 ```
 
-- [ ] **Step 2: RED를 확인한다**
+- [x] **Step 2: RED를 확인한다**
 
 Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' -only-testing:KocroTests/AppControllerTests -only-testing:KocroTests/MacroPipelineIntegrationTests -only-testing:KocroTests/ViewModelTests`
 
 Expected: 현재 `save()`가 원본 draft를 먼저 저장하고 나서 등록을 전면 교체하므로 충돌 disabled 값·prepare 취소·기존 registration 유지 assertion이 실패하며 `** TEST FAILED **`가 출력된다.
 
-- [ ] **Step 3: AppController 저장 트랜잭션을 최소 구현한다**
+Evidence (2026-09-07): 저장 성공·실패 순서 테스트를 먼저 추가한 뒤 지정 명령이 종료 코드 65와 `** TEST FAILED **`를 반환했다. 원본 draft 저장, cancel 미호출, 충돌 비활성화 값 미영속화를 각각 재현했다.
+
+- [x] **Step 3: AppController 저장 트랜잭션을 최소 구현한다**
 
 `ShortcutCoordinating` 경계를 `prepareReplacement`, `commit`, `cancel`, `shutdown`으로 바꾼다. `AppController.save()`은 validator를 통과한 draft로 candidate를 준비하고, `candidate.settings`를 원자 저장한 뒤에만 runtime과 draft를 그 값으로 바꾸고 commit한다. 저장 오류에서는 candidate를 cancel하고 runtime·registration·snapshot을 건드리지 않으며 사용자가 편집한 draft는 유지한다. load 성공과 권한 refresh도 같은 coordinator API를 사용하되 이미 영속화된 runtime은 즉시 prepare/commit하고 파일을 다시 저장하지 않는다.
 
@@ -1317,17 +1319,21 @@ registration = shortcuts.commit(candidate) { [snapshots] states in
 
 충돌 안내용 `.registrationFailed`는 해당 저장 결과의 registration map에 보존한다. `SettingsViewModel.synchronizeStatus`는 dirty draft를 덮어쓰지 않고 이 map만 갱신하며, 다음 저장 결과를 받으면 map 전체를 새 값으로 교체한다.
 
-- [ ] **Step 4: GREEN과 관련 suite를 확인한다**
+- [x] **Step 4: GREEN과 관련 suite를 확인한다**
 
 Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' -only-testing:KocroTests/AppControllerTests -only-testing:KocroTests/MacroPipelineIntegrationTests -only-testing:KocroTests/ShortcutCoordinatorTests -only-testing:KocroTests/ViewModelTests`
 
 Expected: `** TEST SUCCEEDED **`; persistence가 ownership commit보다 먼저 일어나고 실패 시 기존 실행 설정·등록·snapshot과 편집 draft가 유지된다.
 
-- [ ] **Step 5: 동작을 바꾸지 않는 refactor와 재검증을 수행한다**
+Evidence (2026-09-07): `AppControllerTests`, `MacroPipelineIntegrationTests`, `ShortcutCoordinatorTests`, `ViewModelTests`가 종료 코드 0과 `** TEST SUCCEEDED **`로 통과했다. conductor도 같은 관련 suite를 재실행해 통과를 확인했다.
+
+- [x] **Step 5: 동작을 바꾸지 않는 refactor와 재검증을 수행한다**
 
 저장 성공·실패 분기의 공통 상태 갱신을 정리하되 persistence-before-commit 순서는 유지한다. 이후 Step 4와 같은 관련 suite를 다시 실행해 `** TEST SUCCEEDED **`를 확인한다.
 
-- [ ] **Step 6: checkpoint 후보**
+Evidence (2026-09-07): 코드 품질 리뷰에서 load 충돌이 저장 없이 runtime·draft를 비활성화하는 문제와 stale candidate 실패가 드러나지 않는 문제를 확인했다. 실제 `ShortcutCoordinator`·`CarbonSpy`를 사용한 시작 충돌 재시도, 저장 중 old route 실행, provisional ID cancel 테스트를 RED로 추가했다. load·refresh는 영속 설정을 유지하고 `commit`은 optional 실패를 반환하도록 수정한 뒤 관련 suite와 전체 테스트가 `** TEST SUCCEEDED **`로 통과했다.
+
+- [x] **Step 6: checkpoint 후보**
 
 builder는 커밋하지 않는다. conductor는 stage 6 검증 뒤 `wip(task-14): commit shortcut conflicts after persistence`를 만들 수 있다.
 

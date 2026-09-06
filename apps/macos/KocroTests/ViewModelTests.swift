@@ -125,6 +125,31 @@ final class ViewModelTests: XCTestCase {
         XCTAssertTrue(model.isDirty)
     }
 
+    func testStatusSynchronizationReplacesCompleteRegistrationMapWithoutChangingDirtyDraft() {
+        let original = Fixtures.settings(text: "저장된 값")
+        let replacement = Fixtures.carbon(14)
+        let shortcuts = ShortcutSpy(states: [original.macros[0].id: .registrationFailed])
+        let app = AppController(
+            store: StoreSpy(loadResult: .success(original)),
+            shortcuts: shortcuts,
+            permissions: PermissionSpy(),
+            queue: QueueSpy()
+        )
+        app.start()
+        let model = SettingsViewModel(settings: original, validator: .init())
+        model.settings.macros[0].text = "저장 전 편집"
+        model.synchronizeStatus(from: app)
+
+        shortcuts.states = [replacement.id: .registered]
+        app.draft = .init(macros: [replacement])
+        app.save()
+        model.synchronizeStatus(from: app)
+
+        XCTAssertEqual(model.settings.macros[0].text, "저장 전 편집")
+        XCTAssertEqual(model.registration, [replacement.id: .registered])
+        XCTAssertTrue(model.isDirty)
+    }
+
     func testBadLoadDraftIsReplacedWithDefaultsOnlyWhenSettingsOpen() {
         let app = AppController(
             store: StoreSpy(loadResult: .failure(StoreError.invalidFile)),

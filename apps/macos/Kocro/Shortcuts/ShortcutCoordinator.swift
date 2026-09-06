@@ -21,7 +21,12 @@ protocol HIDServing: AnyObject {
     func stop()
 }
 
-final class PreparedShortcutReplacement {
+protocol ShortcutReplacementCandidate: AnyObject {
+    var settings: AppSettings { get }
+    var states: [UUID: RegistrationState] { get }
+}
+
+final class PreparedShortcutReplacement: ShortcutReplacementCandidate {
     let settings: AppSettings
     let states: [UUID: RegistrationState]
     fileprivate let transactionID: UUID
@@ -100,10 +105,12 @@ final class ShortcutCoordinator {
         installSnapshots: ([UUID: RegistrationState]) -> Void = { _ in }
     ) -> [UUID: RegistrationState] {
         let candidate = prepareReplacement(with: AppSettings(macros: macros))
-        return commit(candidate, installSnapshots: installSnapshots)
+        return commit(candidate, installSnapshots: installSnapshots) ?? [:]
     }
 
-    func prepareReplacement(with settings: AppSettings) -> PreparedShortcutReplacement {
+    func prepareReplacement(
+        with settings: AppSettings
+    ) -> any ShortcutReplacementCandidate {
         // Carbon lifecycle APIs are main-thread-only. Callers must not invoke
         // replacement synchronously from onTrigger; schedule it on main instead.
         dispatchPrecondition(condition: .onQueue(.main))
@@ -185,11 +192,12 @@ final class ShortcutCoordinator {
 
     @discardableResult
     func commit(
-        _ candidate: PreparedShortcutReplacement,
+        _ candidate: any ShortcutReplacementCandidate,
         installSnapshots: ([UUID: RegistrationState]) -> Void = { _ in }
-    ) -> [UUID: RegistrationState] {
+    ) -> [UUID: RegistrationState]? {
         dispatchPrecondition(condition: .onQueue(.main))
-        guard let pending = consume(candidate) else { return candidate.states }
+        guard let candidate = candidate as? PreparedShortcutReplacement,
+              let pending = consume(candidate) else { return nil }
         ingress.beginReplacement()
 
         var states = pending.states
@@ -208,8 +216,9 @@ final class ShortcutCoordinator {
         return states
     }
 
-    func cancel(_ candidate: PreparedShortcutReplacement) {
+    func cancel(_ candidate: any ShortcutReplacementCandidate) {
         dispatchPrecondition(condition: .onQueue(.main))
+        guard let candidate = candidate as? PreparedShortcutReplacement else { return }
         guard let pending = consume(candidate) else { return }
         pending.newlyRegisteredIDs.forEach { carbon.unregister(id: $0) }
     }

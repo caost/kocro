@@ -477,6 +477,10 @@ final class ShortcutSpy: ShortcutCoordinating, @unchecked Sendable {
     private var statesStorage: [UUID: RegistrationState]
     private var triggerStorage: ((UUID, ContinuousClock.Instant) -> Void)?
     private var replaceCallsStorage: [[MacroDefinition]] = []
+    var nextCandidateSettings: AppSettings?
+    private(set) var prepareCalls: [AppSettings] = []
+    private(set) var commitCount = 0
+    private(set) var cancelCount = 0
 
     init(states: [UUID: RegistrationState] = [:]) {
         statesStorage = states
@@ -492,23 +496,33 @@ final class ShortcutSpy: ShortcutCoordinating, @unchecked Sendable {
     }
     var replaceCalls: [[MacroDefinition]] { locked { replaceCallsStorage } }
 
-    func replace(
-        with macros: [MacroDefinition],
+    func prepareReplacement(
+        with settings: AppSettings
+    ) -> any ShortcutReplacementCandidate {
+        prepareCalls.append(settings)
+        let candidateSettings = nextCandidateSettings ?? settings
+        replaceCallsStorage.append(settings.macros)
+        let result = statesStorage.isEmpty
+            ? Dictionary(
+                uniqueKeysWithValues: candidateSettings.macros.filter(\.isEnabled).map {
+                    ($0.id, RegistrationState.registered)
+                }
+            )
+            : statesStorage
+        return ShortcutCandidateSpy(settings: candidateSettings, states: result)
+    }
+
+    func commit(
+        _ candidate: any ShortcutReplacementCandidate,
         installSnapshots: ([UUID: RegistrationState]) -> Void
-    ) -> [UUID: RegistrationState] {
-        let result = locked {
-            replaceCallsStorage.append(macros)
-            if statesStorage.isEmpty {
-                return Dictionary(
-                    uniqueKeysWithValues: macros.filter(\.isEnabled).map {
-                        ($0.id, RegistrationState.registered)
-                    }
-                )
-            }
-            return statesStorage
-        }
-        installSnapshots(result)
-        return result
+    ) -> [UUID: RegistrationState]? {
+        commitCount += 1
+        installSnapshots(candidate.states)
+        return candidate.states
+    }
+
+    func cancel(_ candidate: any ShortcutReplacementCandidate) {
+        cancelCount += 1
     }
 
     func shutdown() {}
@@ -523,6 +537,16 @@ final class ShortcutSpy: ShortcutCoordinating, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return body()
+    }
+}
+
+private final class ShortcutCandidateSpy: ShortcutReplacementCandidate {
+    let settings: AppSettings
+    let states: [UUID: RegistrationState]
+
+    init(settings: AppSettings, states: [UUID: RegistrationState]) {
+        self.settings = settings
+        self.states = states
     }
 }
 

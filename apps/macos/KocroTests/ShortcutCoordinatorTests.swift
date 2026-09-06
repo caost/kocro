@@ -375,7 +375,7 @@ final class ShortcutCoordinatorTests: XCTestCase {
         let releasedID = carbon.registrations.last!.id
 
         coordinator.cancel(candidate)
-        coordinator.commit(candidate)
+        XCTAssertNil(coordinator.commit(candidate))
 
         var triggered: [UUID] = []
         coordinator.onTrigger = { id, _ in triggered.append(id) }
@@ -425,7 +425,7 @@ final class ShortcutCoordinatorTests: XCTestCase {
         let secondRegistrationID = secondCarbon.registrations.last!.id
 
         second.cancel(candidate)
-        second.commit(candidate)
+        XCTAssertNil(second.commit(candidate))
 
         var triggered: [UUID] = []
         second.onTrigger = { id, _ in triggered.append(id) }
@@ -451,6 +451,7 @@ final class ShortcutCoordinatorTests: XCTestCase {
             with: AppSettings(macros: [replacement])
         )
         let secondID = carbon.registrations.last!.id
+        XCTAssertNil(coordinator.commit(firstCandidate))
         coordinator.cancel(firstCandidate)
         coordinator.commit(secondCandidate)
 
@@ -468,7 +469,7 @@ final class ShortcutCoordinatorTests: XCTestCase {
             carbon: carbon,
             hid: HIDSpy(permission: true, starts: true)
         )
-        var candidate: PreparedShortcutReplacement? = coordinator.prepareReplacement(
+        var candidate: (any ShortcutReplacementCandidate)? = coordinator.prepareReplacement(
             with: AppSettings(macros: [Fixtures.carbon(15)])
         )
         let registrationID = carbon.registrations.last!.id
