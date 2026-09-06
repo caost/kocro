@@ -2,7 +2,7 @@
 type: plan
 title: Kocro macOS 매크로 텍스트 입력 구현 계획
 created: 2026-09-04
-updated: 2026-09-06
+updated: 2026-09-07
 related:
   - documents/spec/platform/macos-macro-text-input.md
 status: in-progress
@@ -1111,7 +1111,7 @@ builder는 커밋하지 않는다. conductor는 stage 6 검증 뒤 `wip(task-11)
 - Modify: `apps/macos/Kocro/Features/Settings/SettingsView.swift`
 - Modify: `apps/macos/KocroTests/ViewModelTests.swift`
 
-- [ ] **Step 1: 입력 모드별 키 처리와 토큰 표시 실패 테스트를 작성한다**
+- [x] **Step 1: 입력 모드별 키 처리와 토큰 표시 실패 테스트를 작성한다**
 
 테스트 가능한 `KeyRecorderMode`와 `KeyRecorderDecision` 경계로 다음 표를 고정한다.
 
@@ -1142,13 +1142,15 @@ XCTAssertEqual(
 )
 ```
 
-- [ ] **Step 2: RED를 확인한다**
+- [x] **Step 2: RED를 확인한다**
 
 Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' -only-testing:KocroTests/ViewModelTests`
 
 Expected: 토큰과 mode/decision API가 없어 compile failure가 발생하고 `** TEST FAILED **`가 출력된다.
 
-- [ ] **Step 3: pure key decision과 토큰 렌더링을 최소 구현한다**
+Evidence (2026-09-06): `ViewModelTests`에 실패 테스트를 먼저 추가한 뒤 같은 명령이 종료 코드 65와 `** TEST FAILED **`를 반환했다. 컴파일러는 `ShortcutDefinition.tokens`, `KeyRecorderMode`, `KeyRecorderTranslator.decision`이 없다고 보고했다.
+
+- [x] **Step 3: pure key decision과 토큰 렌더링을 최소 구현한다**
 
 `KeyRecorderTranslator.decision(...)`에서 repeat를 먼저 무시하고 mode별 Escape/Delete/Backspace를 처리한 뒤 기존 shortcut/trailing validation을 재사용한다. `RecorderView.keyDown`은 `.clear`에서 `.empty`를 전달하고, `.resignFocus`에서 `window?.makeFirstResponder(nil)`만 호출하며, `.keepValue`에서는 binding과 focus를 유지한다. trailing 모드에는 Delete·Backspace·Escape를 허용하되 `KeyRecorder` 옆의 `지우기` 버튼만 nil을 설정한다.
 
@@ -1162,17 +1164,33 @@ enum KeyRecorderDecision: Equatable {
 
 `ShortcutDefinition.tokens`와 `MacKeyCodePolicy.displayName(for:)`을 추가한다. `RecorderView.draw(_:)`는 각 토큰을 padding과 둥근 테두리가 있는 별도 badge로 왼쪽부터 그리며, 토큰이 없으면 prompt를 그린다. F21~F24 picker는 같은 입력 영역 안에 유지하고 선택 시 shortcut 전체를 `.function(number), []`로 교체한다.
 
-- [ ] **Step 4: GREEN과 관련 suite를 확인한다**
+- [x] **Step 4: GREEN과 관련 suite를 확인한다**
 
 Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' -only-testing:KocroTests/ViewModelTests -only-testing:KocroTests/SettingsValidatorTests -only-testing:KocroTests/EventBatchFactoryTests`
 
 Expected: `** TEST SUCCEEDED **`; 두 모드의 Delete·Backspace·Escape 동작이 분리되고 모든 지원 키가 사람이 알아볼 수 있는 토큰으로 표시된다.
 
-- [ ] **Step 5: 동작을 바꾸지 않는 refactor와 재검증을 수행한다**
+Evidence (2026-09-06): `ViewModelTests` 단독 실행과 `ViewModelTests`, `SettingsValidatorTests`, `EventBatchFactoryTests` 관련 suite가 모두 종료 코드 0과 `** TEST SUCCEEDED **`로 통과했다. conductor도 같은 관련 suite를 재실행해 통과를 확인했다.
+
+- [x] **Step 5: 동작을 바꾸지 않는 refactor와 재검증을 수행한다**
 
 키 이름 표와 입력 mode 분기에서 중복을 제거하고 token layout 이름을 정리한다. 이후 Step 4와 같은 관련 suite를 다시 실행해 `** TEST SUCCEEDED **`를 확인한다.
 
-- [ ] **Step 6: checkpoint 후보**
+Evidence (2026-09-07): 코드 품질 리뷰에서 확인한 VoiceOver role/value/help, 최장 토큰 조합 잘림, 포커스 표시 문제를 실패 테스트로 재현했다. `RecorderView` 접근성 동작, 측정 기반 intrinsic width, first responder 포커스 링을 구현하고 trailing 변환 중복을 정리한 뒤 관련 suite와 전체 테스트가 `** TEST SUCCEEDED **`로 통과했다.
+
+후속 재리뷰에서 key-view 이동과 외부 binding 변경 알림 누락을 확인했다. 실제 `NSWindow` key-view loop와 접근성 알림 spy로 RED를 재현한 뒤, 기록 완료 시 다음 컨트롤로 이동하고 token이 실제로 바뀔 때만 `.valueChanged`를 게시하도록 수정했다. 관련 suite와 전체 테스트를 다시 실행해 `** TEST SUCCEEDED **`를 확인했다.
+
+최종 스펙 리뷰에서 trailing F1~F20이 저장 모델에서 화면 모델로 복원될 때 `Key 90`처럼 표시되는 round-trip 문제를 확인했다. F1과 F20 실패 테스트를 추가하고 공통 `ShortcutDefinition.init(trailingKey:)` 변환을 적용한 뒤 관련 suite와 전체 테스트를 다시 통과했다.
+
+코드 품질 종료 리뷰에서 Command key equivalent가 메뉴 액션으로 전달되는 문제와 반복 행의 접근성 라벨이 같은 문제를 확인했다. 실제 `NSWindow`·`NSMenu` dispatch 테스트와 다중 행 접근성 테스트를 RED로 추가하고, 공통 event handler 및 제목·UUID·입력 종류를 포함한 접근성 라벨을 구현했다. 관련 suite와 전체 테스트를 다시 통과했다.
+
+후속 종료 리뷰에서 key repeat가 key-up 전에 메뉴로 전달될 수 있는 문제를 확인했다. initial down·repeat·key-up 시퀀스와 같은 UUID prefix를 가진 행을 실패 테스트로 추가하고, key equivalent의 matching key-up까지 gesture를 유지하며 full UUID를 접근성 라벨에 사용하도록 수정했다. 관련 suite, 전체 테스트, Release build가 통과했다.
+
+conductor 셀프 리뷰에서 보조 키를 먼저 떼면 key-up의 modifier가 달라질 수 있는 경계를 확인했다. modifier 없는 matching base-key key-up과 unrelated key-up 테스트를 추가하고, release는 key code로 판정하도록 수정한 뒤 관련 suite와 전체 테스트를 다시 통과했다.
+
+마지막 코드 품질 리뷰에서 key-up 전에 포커스·key window를 잃는 경우와 pending 중 다른 key equivalent가 메뉴로 전달되는 경우를 확인했다. 재포커스와 `Cmd+Q` 메뉴 테스트를 RED로 추가하고, responder·window 수명 주기에서 pending 상태를 정리하며 pending 동안 모든 key equivalent를 소비하도록 수정했다. 관련 suite와 전체 테스트를 다시 통과했다.
+
+- [x] **Step 6: checkpoint 후보**
 
 builder는 커밋하지 않는다. conductor는 stage 6 검증 뒤 `wip(task-12): add shortcut token editor`를 만들 수 있다.
 

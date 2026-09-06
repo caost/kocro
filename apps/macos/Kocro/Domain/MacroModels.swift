@@ -42,18 +42,31 @@ struct ShortcutDefinition: Codable, Hashable, Sendable {
         if modifiers.contains(.shift) { prefix += "⇧" }
         if modifiers.contains(.command) { prefix += "⌘" }
 
-        let keyName: String
+        return prefix + (baseKeyName ?? "설정 안 됨")
+    }
+
+    var tokens: [String] {
+        var values: [String] = []
+        if modifiers.contains(.control) { values.append("⌃ Control") }
+        if modifiers.contains(.option) { values.append("⌥ Option") }
+        if modifiers.contains(.shift) { values.append("⇧ Shift") }
+        if modifiers.contains(.command) { values.append("⌘ Command") }
+
+        if let baseKeyName { values.append(baseKeyName) }
+        return values
+    }
+
+    private var baseKeyName: String? {
         switch key {
         case .empty:
-            keyName = "설정 안 됨"
+            return nil
         case .letter(let letter):
-            keyName = letter.uppercased()
+            return letter.uppercased()
         case .keyCode(let keyCode):
-            keyName = "Key \(keyCode)"
+            return MacKeyCodePolicy.displayName(for: keyCode)
         case .function(let number):
-            keyName = "F\(number)"
+            return "F\(number)"
         }
-        return prefix + keyName
     }
 
     var registrationIdentity: ShortcutRegistrationIdentity? {
@@ -101,6 +114,20 @@ enum TrailingKey: Codable, Hashable, Sendable {
     case tab
     case custom(keyCode: UInt16?, modifiers: ModifierSet)
     case customFunction(Int)
+}
+
+extension ShortcutDefinition {
+    init(trailingKey: TrailingKey?) {
+        guard case .custom(let keyCode?, let modifiers) = trailingKey else {
+            self.init(key: .empty, modifiers: [])
+            return
+        }
+        if let number = MacKeyCodePolicy.functionNumber(for: keyCode) {
+            self.init(key: .function(number), modifiers: modifiers)
+        } else {
+            self.init(key: .keyCode(keyCode), modifiers: modifiers)
+        }
+    }
 }
 
 struct MacroDefinition: Codable, Equatable, Identifiable, Sendable {

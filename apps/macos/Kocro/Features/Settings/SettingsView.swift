@@ -166,8 +166,19 @@ struct SettingsView: View {
             }
         }
         .padding()
-        .frame(minWidth: 760, minHeight: 560)
+        .frame(minWidth: 1_100, minHeight: 560)
         .onAppear(perform: prepare)
+    }
+}
+
+struct MacroRecorderAccessibilityLabels: Equatable {
+    let shortcut: String
+    let trailing: String
+
+    init(_ macro: MacroDefinition) {
+        let context = "\(macro.displayTitle) (\(macro.id.uuidString))"
+        shortcut = "\(context) 단축키"
+        trailing = "\(context) 후속 키"
     }
 }
 
@@ -183,15 +194,27 @@ private struct MacroRow: View {
                     .accessibilityLabel(macro.displayTitle)
                 Toggle("활성화", isOn: $macro.isEnabled)
                     .toggleStyle(.checkbox)
-                KeyRecorder(shortcut: $macro.shortcut)
-                    .frame(width: 150, height: 26)
-                Picker("F21~F24", selection: hidFunctionBinding) {
-                    Text("선택 안 함").tag(0)
-                    ForEach(21...24, id: \.self) { number in
-                        Text("F\(number)").tag(number)
+                HStack(spacing: 6) {
+                    KeyRecorder(
+                        shortcut: $macro.shortcut,
+                        accessibilityLabel: recorderAccessibilityLabels.shortcut
+                    )
+                        .fixedSize(horizontal: true, vertical: false)
+                        .frame(height: 26)
+                    Picker("F21~F24", selection: hidFunctionBinding) {
+                        Text("F21~F24").tag(0)
+                        ForEach(21...24, id: \.self) { number in
+                            Text("F\(number)").tag(number)
+                        }
                     }
+                    .labelsHidden()
+                    .frame(width: 100)
                 }
-                .frame(width: 160)
+                .padding(4)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.secondary.opacity(0.3))
+                )
                 Spacer()
                 Text(String(macro.id.uuidString.prefix(8)))
                     .font(.caption.monospaced())
@@ -222,9 +245,14 @@ private struct MacroRow: View {
                     KeyRecorder(
                         shortcut: trailingShortcutBinding,
                         prompt: "후속 키 입력",
-                        allowsUnmodified: true
+                        mode: .trailing,
+                        accessibilityLabel: recorderAccessibilityLabels.trailing
                     )
-                        .frame(width: 150, height: 26)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .frame(height: 26)
+                    Button("지우기") {
+                        macro.trailingKey = nil
+                    }
                 }
             }
 
@@ -235,6 +263,10 @@ private struct MacroRow: View {
             }
         }
         .padding(.vertical, 6)
+    }
+
+    private var recorderAccessibilityLabels: MacroRecorderAccessibilityLabels {
+        MacroRecorderAccessibilityLabels(macro)
     }
 
     private var hidFunctionBinding: Binding<Int> {
@@ -269,12 +301,7 @@ private struct MacroRow: View {
 
     private var trailingShortcutBinding: Binding<ShortcutDefinition> {
         Binding(
-            get: {
-                guard case .custom(let keyCode?, let modifiers) = macro.trailingKey else {
-                    return .init(key: .empty, modifiers: [])
-                }
-                return .init(key: .keyCode(keyCode), modifiers: modifiers)
-            },
+            get: { ShortcutDefinition(trailingKey: macro.trailingKey) },
             set: { shortcut in
                 switch shortcut.key {
                 case .keyCode(let keyCode):
