@@ -64,9 +64,11 @@ enum Fixtures {
 
 final class CarbonSpy: CarbonServing {
     var onRegistrationID: ((UInt32, ContinuousClock.Instant) -> Void)?
+    var onUnregisterID: ((UInt32) -> Void)?
     var failingRegistration: Int?
     private(set) var registrations: [(id: UInt32, shortcut: ShortcutDefinition)] = []
     private(set) var unregisterAllCount = 0
+    private(set) var unregisteredIDs: [UInt32] = []
     private(set) var lifecycleMainThreads: [Bool] = []
 
     init(failingRegistration: Int? = nil) {
@@ -86,6 +88,12 @@ final class CarbonSpy: CarbonServing {
         unregisterAllCount += 1
     }
 
+    func unregister(id: UInt32) {
+        lifecycleMainThreads.append(Thread.isMainThread)
+        unregisteredIDs.append(id)
+        onUnregisterID?(id)
+    }
+
     func send(id: UInt32) {
         onRegistrationID?(id, ContinuousClock.now)
     }
@@ -95,6 +103,8 @@ final class CarbonHotKeyAPISpy: CarbonHotKeyAPI {
     var registrationStatus: OSStatus = noErr
     var onUnregister: (() -> Void)?
     private(set) var options: [UInt32] = []
+    private(set) var registeredIDs: [UInt32] = []
+    private(set) var unregisteredReferences: [EventHotKeyRef] = []
 
     func register(
         keyCode: UInt32,
@@ -104,11 +114,15 @@ final class CarbonHotKeyAPISpy: CarbonHotKeyAPI {
         options: UInt32
     ) -> (OSStatus, EventHotKeyRef?) {
         self.options.append(options)
-        let reference = registrationStatus == noErr ? EventHotKeyRef(bitPattern: 1) : nil
+        registeredIDs.append(hotKeyID.id)
+        let reference = registrationStatus == noErr
+            ? EventHotKeyRef(bitPattern: Int(hotKeyID.id))
+            : nil
         return (registrationStatus, reference)
     }
 
     func unregister(_ hotKey: EventHotKeyRef) {
+        unregisteredReferences.append(hotKey)
         onUnregister?()
     }
 }

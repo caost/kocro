@@ -1203,7 +1203,7 @@ builder는 커밋하지 않는다. conductor는 stage 6 검증 뒤 `wip(task-12)
 - Modify: `apps/macos/KocroTests/CarbonHotKeySourceTests.swift`
 - Modify: `apps/macos/KocroTests/ShortcutCoordinatorTests.swift`
 
-- [ ] **Step 1: identity 재사용과 staged routing 실패 테스트를 작성한다**
+- [x] **Step 1: identity 재사용과 staged routing 실패 테스트를 작성한다**
 
 Carbon source가 registration ID별 reference를 해제할 수 있는지 검증한다. coordinator 테스트는 기존 F13을 다른 UUID로 이전하거나 F13/F14를 두 항목 사이에서 교환할 때 같은 `ShortcutRegistrationIdentity`의 OS 등록과 registration ID를 재사용하는지 확인한다. 새 F15 후보 ID는 prepare 중 callback이 와도 전달하지 않고 commit 뒤 새 UUID로 전달해야 한다. cancel은 새 F15만 해제하고 기존 F13/F14 route와 등록을 그대로 유지해야 한다. 지원하지 않는 modifier bit가 있는 shortcut은 identity 생성 실패로 거부한다.
 
@@ -1217,13 +1217,15 @@ carbon.send(id: existingF13ID)
 XCTAssertEqual(triggered, [oldOwnerOfF13.id])
 ```
 
-- [ ] **Step 2: RED를 확인한다**
+- [x] **Step 2: RED를 확인한다**
 
 Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' -only-testing:KocroTests/CarbonHotKeySourceTests -only-testing:KocroTests/ShortcutCoordinatorTests`
 
 Expected: `prepareReplacement`, `commit`, `cancel`과 개별 unregister API가 없어 compile failure가 발생하고 `** TEST FAILED **`가 출력된다.
 
-- [ ] **Step 3: Carbon resource와 candidate를 최소 구현한다**
+Evidence (2026-09-07): Carbon·coordinator 실패 테스트를 먼저 추가한 뒤 지정 명령이 종료 코드 65와 `** TEST FAILED **`를 반환했다. `CarbonHotKeySource.unregister(id:)`와 staged replacement API가 없어 컴파일에 실패했다.
+
+- [x] **Step 3: Carbon resource와 candidate를 최소 구현한다**
 
 `ShortcutRegistrationIdentity`는 Carbon virtual key code와 `ModifierSet.supported` 안의 비트만 허용하는 값으로 확정하고 UUID를 넣지 않는다. `.letter("A")`, `.letter("a")`, `.keyCode(0)`처럼 같은 Carbon key code와 modifier로 변환되는 모델은 같은 identity가 된다.
 
@@ -1241,17 +1243,21 @@ struct PreparedShortcutReplacement {
 }
 ```
 
-- [ ] **Step 4: GREEN과 관련 suite를 확인한다**
+- [x] **Step 4: GREEN과 관련 suite를 확인한다**
 
 Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' -only-testing:KocroTests/CarbonHotKeySourceTests -only-testing:KocroTests/ShortcutCoordinatorTests -only-testing:KocroTests/SettingsValidatorTests`
 
 Expected: `** TEST SUCCEEDED **`; identity가 같은 등록은 재사용되고 prepare 중 새 ID는 unrouted이며 cancel 뒤 기존 route와 등록이 유지된다.
 
-- [ ] **Step 5: 동작을 바꾸지 않는 refactor와 재검증을 수행한다**
+Evidence (2026-09-07): `CarbonHotKeySourceTests`, `ShortcutCoordinatorTests`, `SettingsValidatorTests`가 종료 코드 0과 `** TEST SUCCEEDED **`로 통과했다. conductor도 같은 관련 suite를 재실행해 통과를 확인했다.
+
+- [x] **Step 5: 동작을 바꾸지 않는 refactor와 재검증을 수행한다**
 
 candidate의 신규·재사용 registration ID 집합과 ingress route 교체 책임이 중복되지 않도록 정리한다. 이후 Step 4와 같은 관련 suite를 다시 실행해 `** TEST SUCCEEDED **`를 확인한다.
 
-- [ ] **Step 6: checkpoint 후보**
+Evidence (2026-09-07): 코드 품질 리뷰에서 candidate의 commit/cancel 순서 역전, 교차 coordinator 사용, 겹친 prepare, 미종료 token이 등록을 잘못 해제하거나 남기는 문제를 확인했다. coordinator 소유의 단일 사용 transaction과 pending record를 구현하고 각 오용 경로를 RED 테스트로 고정했다. 수정 뒤 관련 suite와 전체 테스트가 `** TEST SUCCEEDED **`로 통과했다.
+
+- [x] **Step 6: checkpoint 후보**
 
 builder는 커밋하지 않는다. conductor는 stage 6 검증 뒤 `wip(task-13): stage Carbon shortcut replacement`를 만들 수 있다.
 

@@ -90,6 +90,15 @@ final class SettingsValidatorTests: XCTestCase {
         XCTAssertThrowsError(try validator.validate(.init(macros: values)))
     }
 
+    func testRegistrationIdentityRejectsUnsupportedModifierBits() {
+        let unsupported = ModifierSet(rawValue: ModifierSet.command.rawValue | 0x10)
+
+        XCTAssertNil(
+            ShortcutDefinition(key: .keyCode(0), modifiers: unsupported)
+                .registrationIdentity
+        )
+    }
+
     func testShortcutMatrixAndDuplicates() {
         XCTAssertThrowsError(
             try validator.validateShortcut(.init(key: .letter("a"), modifiers: []))

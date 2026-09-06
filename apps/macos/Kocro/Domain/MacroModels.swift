@@ -70,6 +70,9 @@ struct ShortcutDefinition: Codable, Hashable, Sendable {
     }
 
     var registrationIdentity: ShortcutRegistrationIdentity? {
+        guard modifiers.rawValue & ~ModifierSet.supported.rawValue == 0 else {
+            return nil
+        }
         let registrationKey: ShortcutRegistrationKey
         switch key {
         case .empty:

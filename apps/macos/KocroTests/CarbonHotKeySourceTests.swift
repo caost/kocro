@@ -44,4 +44,23 @@ final class CarbonHotKeySourceTests: XCTestCase {
 
         wait(for: [unregistered], timeout: 1)
     }
+
+    func testDuplicateRegistrationIDFailsAndIndividualUnregisterReleasesOnlyItsReference() {
+        let api = CarbonHotKeyAPISpy()
+        let source = CarbonHotKeySource(api: api)
+
+        XCTAssertTrue(source.register(id: 1, shortcut: .init(key: .function(13), modifiers: [])))
+        XCTAssertTrue(source.register(id: 2, shortcut: .init(key: .function(14), modifiers: [])))
+        XCTAssertFalse(source.register(id: 1, shortcut: .init(key: .function(15), modifiers: [])))
+
+        source.unregister(id: 1)
+        XCTAssertEqual(api.unregisteredReferences, [EventHotKeyRef(bitPattern: 1)!])
+
+        source.unregisterAll()
+        XCTAssertEqual(
+            api.unregisteredReferences,
+            [EventHotKeyRef(bitPattern: 1)!, EventHotKeyRef(bitPattern: 2)!]
+        )
+        XCTAssertEqual(api.registeredIDs, [1, 2])
+    }
 }
