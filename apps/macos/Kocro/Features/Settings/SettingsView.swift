@@ -25,15 +25,7 @@ final class SettingsViewModel: ObservableObject {
     }
 
     func add() {
-        settings.macros.append(
-            MacroDefinition(
-                id: UUID(),
-                isEnabled: false,
-                shortcut: .init(key: .empty, modifiers: []),
-                text: "",
-                trailingKey: nil
-            )
-        )
+        settings.macros.append(.newDraft())
     }
 
     func delete(at offsets: IndexSet) {
@@ -186,6 +178,9 @@ private struct MacroRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
+                TextField("제목", text: $macro.title, prompt: Text(macro.displayTitle))
+                    .frame(width: 180)
+                    .accessibilityLabel(macro.displayTitle)
                 Toggle("활성화", isOn: $macro.isEnabled)
                     .toggleStyle(.checkbox)
                 KeyRecorder(shortcut: $macro.shortcut)

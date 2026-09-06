@@ -112,10 +112,26 @@ struct MacroDefinition: Codable, Equatable, Identifiable, Sendable {
     )
 
     let id: UUID
+    var title: String = ""
     var isEnabled: Bool
     var shortcut: ShortcutDefinition
     var text: String
     var trailingKey: TrailingKey?
+
+    var displayTitle: String {
+        title.isEmpty ? "이름 없는 매크로" : title
+    }
+
+    static func newDraft() -> Self {
+        Self(
+            id: UUID(),
+            title: "",
+            isEnabled: false,
+            shortcut: .init(key: .empty, modifiers: []),
+            text: "",
+            trailingKey: nil
+        )
+    }
 
     func withText(_ value: String) -> Self {
         var copy = self
@@ -128,11 +144,12 @@ struct AppSettings: Codable, Equatable, Sendable {
     var macros: [MacroDefinition]
 
     static let defaults = Self(
-        macros: (13...24).map {
+        macros: (13...24).enumerated().map { index, functionNumber in
             MacroDefinition(
                 id: UUID(),
+                title: "매크로 \(index + 1)",
                 isEnabled: false,
-                shortcut: ShortcutDefinition(key: .function($0), modifiers: []),
+                shortcut: ShortcutDefinition(key: .function(functionNumber), modifiers: []),
                 text: "",
                 trailingKey: nil
             )

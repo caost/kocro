@@ -31,10 +31,18 @@ final class MemorySettingsFile: SettingsFile {
 enum Fixtures {
     static func macro(
         id: UUID = UUID(),
+        title: String = "",
         text: String,
         shortcut: ShortcutDefinition = .init(key: .function(13), modifiers: [])
     ) -> MacroDefinition {
-        .init(id: id, isEnabled: true, shortcut: shortcut, text: text, trailingKey: nil)
+        .init(
+            id: id,
+            title: title,
+            isEnabled: true,
+            shortcut: shortcut,
+            text: text,
+            trailingKey: nil
+        )
     }
 
     static func settings(text: String) -> AppSettings {

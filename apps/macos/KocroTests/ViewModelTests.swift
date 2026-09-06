@@ -31,7 +31,27 @@ final class ViewModelTests: XCTestCase {
 
         XCTAssertEqual(model.settings.macros.first?.id, last)
         XCTAssertEqual(model.settings.macros.count, 29)
+        XCTAssertTrue(model.settings.macros.allSatisfy(\.title.isEmpty))
         XCTAssertTrue(model.isDirty)
+    }
+
+    func testTitleEditingStaysInDraftUntilSave() {
+        let original = AppSettings(
+            macros: [Fixtures.macro(title: "테스트 매크로", text: "값")]
+        )
+        let model = SettingsViewModel(settings: original, validator: .init())
+        var saved: AppSettings?
+        model.onSave = { saved = $0 }
+
+        model.settings.macros[0].title = "편집한 제목"
+
+        XCTAssertEqual(original.macros[0].title, "테스트 매크로")
+        XCTAssertNil(saved)
+        XCTAssertTrue(model.isDirty)
+
+        model.save()
+
+        XCTAssertEqual(saved?.macros[0].title, "편집한 제목")
     }
 
     func testErrorsAreScopedToMacroIDAndCountUnicodeCharacters() {
