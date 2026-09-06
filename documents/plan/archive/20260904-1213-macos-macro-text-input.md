@@ -5,7 +5,7 @@ created: 2026-09-04
 updated: 2026-09-07
 related:
   - documents/spec/platform/macos-macro-text-input.md
-status: in-progress
+status: completed
 ---
 
 # Kocro macOS 매크로 텍스트 입력 구현 계획
@@ -1408,23 +1408,29 @@ builder는 커밋하지 않는다. conductor는 stage 6 검증 뒤 `wip(task-15)
 - Modify: `documents/reference/macos-macro-text-input-verification.md`
 - Modify: `documents/reference/README.md`
 
-- [ ] **Step 1: 전체 XCTest와 Release build를 실행한다**
+- [x] **Step 1: 전체 XCTest와 Release build를 실행한다**
 
 Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' && xcodebuild build -project apps/macos/Kocro.xcodeproj -scheme Kocro -configuration Release -derivedDataPath apps/macos/build CODE_SIGNING_ALLOWED=NO`
 
 Expected: `** TEST SUCCEEDED **`, `** BUILD SUCCEEDED **`; title migration, token 입력, registration identity 재사용, staged cancel/commit, 충돌 disabled 저장, General 설정과 menu action 테스트를 포함한 전체 suite가 통과한다.
 
-- [ ] **Step 2: 금지 API·dependency·배포 target을 확인한다**
+Evidence (2026-09-07): 현재 작업 트리에서 전체 XCTest 147개가 실패 없이 통과했고 unsigned Release build가 성공했다. 실제 앱 검증용 Release 앱은 `Kocro Local Development` 인증서와 Hardened Runtime으로 서명했으며 `codesign --verify --strict`를 통과했다.
+
+- [x] **Step 2: 금지 API·dependency·배포 target을 확인한다**
 
 Run: `! rg -n 'CGEventTap|addGlobalMonitorForEvents|NSPasteboard|Process\(|NSTask|URLSession|F2[5-9]|F3[0-5]' apps/macos/Kocro && ! rg -n 'XCRemoteSwiftPackageReference|XCSwiftPackageProductDependency' apps/macos/Kocro.xcodeproj/project.pbxproj && xcodebuild -showBuildSettings -project apps/macos/Kocro.xcodeproj -scheme Kocro -configuration Release | rg 'PRODUCT_BUNDLE_IDENTIFIER = com.caost.Kocro|MACOSX_DEPLOYMENT_TARGET = 13.0'`
 
 Expected: 앞의 두 검색은 exit 0과 출력 없음, build setting 검색은 bundle identifier와 macOS 13.0을 출력한다.
 
-- [ ] **Step 3: 실제 설정·입력 UI를 순서대로 확인한다**
+Evidence (2026-09-07): 금지 API와 F25~F35, Xcode remote package dependency 검색 결과는 0건이었다. build setting은 `PRODUCT_BUNDLE_IDENTIFIER = com.caost.Kocro`, `MACOSX_DEPLOYMENT_TARGET = 13.0`을 출력했다.
+
+- [x] **Step 3: 실제 설정·입력 UI를 순서대로 확인한다**
 
 Release 앱 하나만 실행한다. 기존 title 키 없는 설정 복사본으로 시작해 제목이 순서대로 보완되고 다른 필드와 UUID가 유지되는지 확인한 뒤 저장해 title 키가 기록되는지 확인한다. 제목 편집·빈 제목의 `이름 없는 매크로`, 추가·삭제·정렬을 확인한다. shortcut 입력에서 modifier와 기준 키가 개별 토큰으로 보이고 새 입력이 전체를 교체하며 Delete·Backspace는 비우고 Escape는 focus만 해제하는지 확인한다. trailing 사용자 지정 입력에서는 세 키가 기록되고 별도 `지우기`가 값을 비우는지 확인한다. F21~F24 picker 선택이 기존 토큰 전체를 교체하는지도 확인한다.
 
 Expected: spec의 데이터 모델·설정 저장·화면 동작과 일치하고 저장 전 편집은 실행 설정에 영향을 주지 않는다.
+
+Evidence (2026-09-07): legacy title 보완·저장, UUID와 다른 필드 유지, 제목을 `기존 제목`에서 `편집한 제목`으로 직접 편집, 빈 제목 표시, 추가·삭제·드래그 정렬, shortcut 교체·Escape·Delete·Backspace, 후속 키 세 토큰·지우기, F21 picker 전체 교체를 서명된 Release 앱에서 확인했다. Backspace key code 51을 입력했을 때 shortcut 접근성 값은 `F13`에서 `설정 안 됨`으로 바뀌었다. 저장된 F13 매크로의 텍스트를 설정 화면에서 `저장하지 않은 텍스트`로 바꾸고 저장하지 않은 채 F13을 실행했을 때 TextEdit에는 기존 실행 설정인 `저장된 텍스트`가 입력돼, 저장 전 편집이 실행 설정에 영향을 주지 않는 것도 확인했다.
 
 - [ ] **Step 4: 실제 충돌·General·메뉴 액션을 순서대로 확인한다**
 
@@ -1432,13 +1438,17 @@ Expected: spec의 데이터 모델·설정 저장·화면 동작과 일치하고
 
 Expected: criterion 13의 실제 Carbon 충돌과 criterion 14의 설정·메뉴 동작이 확인된다.
 
+Evidence (2026-09-07): 일반 탭의 login·Accessibility와 draft F21 조건부 Input Monitoring, 메뉴 바 설정 창, 표준 About의 아이콘·이름·버전·빌드, 종료를 확인했다. 저장된 F21 설정은 Input Monitoring이 허용된 환경에서 `준비됨`과 등록 1개를 표시해 monitor 시작까지 확인했다. Carbon 중복 등록은 macOS가 허용하고 실제 등록 실패를 유발할 예약 shortcut을 확보하지 못해 실제 충돌은 미판정이다. 로컬 개발 빌드의 login 항목도 `notFound`라 정식 배포 검증이 필요하다. 저장 순서와 rollback은 `testCarbonCollisionPersistsDisabledCandidateBeforeCommittingOwnership`, `testCandidateSaveFailureCancelsOnceAndPreservesRuntimeRoutesSnapshotAndDraft`로 확인했다.
+
 - [ ] **Step 5: 기존 실제 입력·권한·성능 검증을 다시 실행하고 기록한다**
 
-Task 10 Step 5의 TextEdit/Safari 또는 Chromium/Terminal/VS Code, Unicode·후속 키·FIFO, 권한 철회, HID 비독점, 종료 해제, login 항목 검증과 Release 100회 latency 측정을 실행한다. `documents/reference/macos-macro-text-input-verification.md`의 canonical frontmatter `updated`를 2026-09-06으로 바꾸고 환경, raw 100 samples, p50/p95, 각 결과와 자동 테스트 근거를 기록한다. 새 문서가 생긴 경우에만 `documents/reference/README.md` 링크를 추가하고 기존 링크는 중복시키지 않는다.
+Task 10 Step 5의 TextEdit/Safari 또는 Chromium/Terminal/VS Code, Unicode·후속 키·FIFO, 권한 철회, HID 비독점, 종료 해제, login 항목 검증과 Release 100회 latency 측정을 실행한다. `documents/reference/macos-macro-text-input-verification.md`의 canonical frontmatter `updated`를 검증 실행일로 바꾸고 환경, raw 100 samples, p50/p95, 각 결과와 자동 테스트 근거를 기록한다. 새 문서가 생긴 경우에만 `documents/reference/README.md` 링크를 추가하고 기존 링크는 중복시키지 않는다.
 
 Run: `test "$(jq '.samples | length' "$HOME/Library/Application Support/com.caost.Kocro/posting-latency.json")" -eq 100 && jq '{p50,p95}' "$HOME/Library/Application Support/com.caost.Kocro/posting-latency.json" && ! rg -n 'TODO|TBD|실행 후 기록' documents/reference/macos-macro-text-input-verification.md`
 
 Expected: exit 0, 숫자 p50/p95와 정확히 100개 sample이 실제 기록과 일치하고 미작성 placeholder가 없다.
+
+Evidence (2026-09-07): TextEdit와 Chrome에서 한글·영문·악센트 문자·이모지 입력을 확인했다. 200ms 간격 100회 Release 측정은 p50 1.453ms, p95 3.273ms였고 원시 sample을 검증 문서에 기록했다. 저장된 F21의 Input Monitoring 허용 상태와 monitor 등록은 확인했다. modifier 합성 Carbon event의 현재 FIFO, 후속 키 실제 게시, 실행 중 권한 철회, 물리 F21~F24 비독점, 정식 배포 login은 재검증하지 못해 미완료로 남겼다.
 
 - [ ] **Step 6: stage 9 formal 커밋 구성 후보**
 
