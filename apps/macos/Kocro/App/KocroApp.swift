@@ -10,7 +10,10 @@ struct LegacySettingsWindowAction {
     }
 
     func open() {
-        _ = sendAction(Selector(("showPreferencesWindow:")))
+        let didOpenPreferences = sendAction(Selector(("showPreferencesWindow:")))
+        if !didOpenPreferences {
+            _ = sendAction(Selector(("showSettingsWindow:")))
+        }
     }
 
     static var application: Self {

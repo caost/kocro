@@ -20,7 +20,7 @@ related:
 
 | 검증 항목 | 결과 |
 | --- | --- |
-| 전체 XCTest | 147개 통과, 실패 0개 |
+| 전체 XCTest | 148개 통과, 실패 0개 |
 | unsigned Release build | 성공 |
 | 로컬 개발 인증서 Release build | 성공, `codesign --verify --strict` 통과 |
 | 금지 API | `CGEventTap`, global monitor, pasteboard, 외부 프로세스, network API, F25~F35 사용 0건 |

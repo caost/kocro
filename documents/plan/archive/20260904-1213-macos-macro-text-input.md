@@ -1414,7 +1414,7 @@ Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destina
 
 Expected: `** TEST SUCCEEDED **`, `** BUILD SUCCEEDED **`; title migration, token 입력, registration identity 재사용, staged cancel/commit, 충돌 disabled 저장, General 설정과 menu action 테스트를 포함한 전체 suite가 통과한다.
 
-Evidence (2026-09-07): 현재 작업 트리에서 전체 XCTest 147개가 실패 없이 통과했고 unsigned Release build가 성공했다. 실제 앱 검증용 Release 앱은 `Kocro Local Development` 인증서와 Hardened Runtime으로 서명했으며 `codesign --verify --strict`를 통과했다.
+Evidence (2026-09-07): 현재 작업 트리에서 전체 XCTest 148개가 실패 없이 통과했고 unsigned Release build가 성공했다. 실제 앱 검증용 Release 앱은 `Kocro Local Development` 인증서와 Hardened Runtime으로 서명했으며 `codesign --verify --strict`를 통과했다.
 
 - [x] **Step 2: 금지 API·dependency·배포 target을 확인한다**
 

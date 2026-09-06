@@ -150,7 +150,7 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(terminateCount, 1)
     }
 
-    func testLegacySettingsWindowActionDispatchesPreferencesSelector() {
+    func testLegacySettingsWindowActionStopsAfterPreferencesSelectorSucceeds() {
         var selectors: [Selector] = []
         let action = LegacySettingsWindowAction { selector in
             selectors.append(selector)
@@ -160,6 +160,21 @@ final class ViewModelTests: XCTestCase {
         action.open()
 
         XCTAssertEqual(selectors.map(NSStringFromSelector), ["showPreferencesWindow:"])
+    }
+
+    func testLegacySettingsWindowActionFallsBackToSettingsSelector() {
+        var selectors: [Selector] = []
+        let action = LegacySettingsWindowAction { selector in
+            selectors.append(selector)
+            return false
+        }
+
+        action.open()
+
+        XCTAssertEqual(
+            selectors.map(NSStringFromSelector),
+            ["showPreferencesWindow:", "showSettingsWindow:"]
+        )
     }
 
     func testStatusPriorityAndRegisteredCount() {
