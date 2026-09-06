@@ -1346,7 +1346,7 @@ builder는 커밋하지 않는다. conductor는 stage 6 검증 뒤 `wip(task-14)
 - Modify: `apps/macos/KocroTests/ViewModelTests.swift`
 - Modify: `apps/macos/KocroTests/LoginItemControllerTests.swift`
 
-- [ ] **Step 1: 매크로/일반 영역과 앱 액션 wiring 실패 테스트를 작성한다**
+- [x] **Step 1: 매크로/일반 영역과 앱 액션 wiring 실패 테스트를 작성한다**
 
 `SettingsSection.macros/general` 선택 상태와 General view model이 login 상태·오류, Accessibility 상태, 조건부 Input Monitoring 상태와 각 권한 액션을 노출하는지 검증한다. 메뉴 action을 closure로 주입해 `설정…`이 설정 창 열기, `Kocro 정보`가 About 열기, `종료`가 terminate를 각각 한 번 호출하는지 확인한다. login 토글은 메뉴 바에서 제거하고 General 영역의 `로그인 시 실행`만 기존 `LoginItemController.setEnabledReportingError`에 연결한다.
 
@@ -1360,13 +1360,15 @@ actions.openAbout()
 XCTAssertEqual(aboutCount, 1)
 ```
 
-- [ ] **Step 2: RED를 확인한다**
+- [x] **Step 2: RED를 확인한다**
 
 Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' -only-testing:KocroTests/ViewModelTests -only-testing:KocroTests/LoginItemControllerTests`
 
 Expected: `SettingsSection`, General 설정 모델 또는 `AppMenuActions`가 없어 compile failure가 발생하고 `** TEST FAILED **`가 출력된다.
 
-- [ ] **Step 3: 설정 영역과 표준 About 액션을 최소 구현한다**
+Evidence (2026-09-07): `ViewModelTests`와 `LoginItemControllerTests`에 설정 영역 선택, 조건부 Input Monitoring, 권한 액션, login 오류 경로, 메뉴 액션 호출 테스트를 먼저 추가했다. `GeneralSettingsViewModel`이 없는 상태에서 compile failure와 `** TEST FAILED **`를 확인했다.
+
+- [x] **Step 3: 설정 영역과 표준 About 액션을 최소 구현한다**
 
 `SettingsView`는 macOS 13에서 지원하는 `TabView`의 `매크로`와 `일반` 두 탭으로 나눈다. 기존 목록·저장·보안 안내는 매크로 탭에 둔다. 일반 탭은 login toggle과 오류, Accessibility 상태·권한 안내·설정 열기, F21~F24가 runtime 또는 draft에서 필요할 때의 Input Monitoring 상태·권한 요청·설정 열기를 표시한다. `SettingsView`에 기존 `SettingsViewModel`, `LoginItemController`, `AppController`를 주입하고 기존 permission 메서드를 재사용한다.
 
@@ -1380,17 +1382,21 @@ struct AppMenuActions {
 }
 ```
 
-- [ ] **Step 4: GREEN과 관련 suite를 확인한다**
+- [x] **Step 4: GREEN과 관련 suite를 확인한다**
 
 Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' -only-testing:KocroTests/ViewModelTests -only-testing:KocroTests/LoginItemControllerTests -only-testing:KocroTests/PermissionClientTests && xcodebuild build -project apps/macos/Kocro.xcodeproj -scheme Kocro -configuration Debug CODE_SIGNING_ALLOWED=NO`
 
 Expected: focused·관련 테스트와 Debug build가 성공하고, 권한·login 제어는 일반 탭에 있으며 메뉴 액션은 올바른 AppKit 동작에 연결된다.
 
-- [ ] **Step 5: 동작을 바꾸지 않는 refactor와 재검증을 수행한다**
+Evidence (2026-09-07): focused·관련 테스트가 `** TEST SUCCEEDED **`로 통과했고 `CODE_SIGNING_ALLOWED=NO` Debug build가 `** BUILD SUCCEEDED **`로 완료됐다.
+
+- [x] **Step 5: 동작을 바꾸지 않는 refactor와 재검증을 수행한다**
 
 매크로·일반 탭 구성과 메뉴 action wiring의 중복을 정리하고 accessibility label을 점검한다. 이후 Step 4와 같은 관련 suite와 Debug build를 다시 실행해 성공을 확인한다.
 
-- [ ] **Step 6: checkpoint 후보**
+Evidence (2026-09-07): 스펙 리뷰에서 runtime에는 HID 단축키가 없고 draft에만 F21~F24가 있을 때 Input Monitoring 상태가 갱신되지 않는 문제를 확인했다. draft 전용 HID 권한 갱신 테스트를 RED로 추가하고 일반 탭 표시 시 runtime과 draft를 함께 기준으로 권한 상태를 조회하도록 수정했다. 재리뷰에서 앱 활성화와 메뉴 표시 시 runtime 기준 갱신이 이 상태를 다시 초기화하는 문제를 확인해, 두 경로 모두 draft를 포함하고 기존 runtime shortcut 재조정을 유지하는 테스트와 구현을 추가했다. 메뉴 바 권한 액션은 저장된 runtime HID 필요 여부로 제한했다. 실제 앱 검증에서 `showSettingsWindow:` selector가 SwiftUI 설정 창을 열지 못하는 문제를 재현해, macOS 14 이상은 `openSettings`, macOS 13은 `showPreferencesWindow:`를 쓰도록 실패 테스트부터 수정했다. 관련 suite와 Debug·Release build가 다시 성공했고 메뉴 바 `설정…`으로 설정 창이 열리는 것을 확인했다.
+
+- [x] **Step 6: checkpoint 후보**
 
 builder는 커밋하지 않는다. conductor는 stage 6 검증 뒤 `wip(task-15): organize General settings and About actions`를 만들 수 있다.
 

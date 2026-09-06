@@ -30,6 +30,25 @@ final class LoginItemControllerTests: XCTestCase {
         XCTAssertEqual(service.registerCount, 1)
     }
 
+    func testGeneralSettingsLoginActionUsesReportingErrorPath() {
+        let service = LoginServiceSpy(status: .notRegistered)
+        service.registerError = LoginServiceSpy.Failure.denied
+        let login = LoginItemController(service: service)
+        let app = AppController(
+            store: StoreSpy(loadResult: .success(.init(macros: []))),
+            shortcuts: ShortcutSpy(),
+            permissions: PermissionSpy(),
+            queue: QueueSpy()
+        )
+        let general = GeneralSettingsViewModel(app: app, login: login)
+
+        general.setLoginEnabled(true)
+
+        XCTAssertEqual(service.registerCount, 1)
+        XCTAssertFalse(login.isEnabled)
+        XCTAssertNotNil(login.errorMessage)
+    }
+
     func testApprovalRequiredStatusIsShownInsteadOfAppearingEnabled() throws {
         let service = LoginServiceSpy(status: .notRegistered)
         service.statusAfterRegister = .requiresApproval

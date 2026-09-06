@@ -176,6 +176,10 @@ final class AppController: ObservableObject {
         permissions.state
     }
 
+    var showsInputMonitoringActions: Bool {
+        settingsNeedHID(runtime) && permissions.state.inputMonitoring == false
+    }
+
     init(
         store: SettingsStoring,
         shortcuts: ShortcutCoordinating,
@@ -283,6 +287,15 @@ final class AppController: ObservableObject {
         }
     }
 
+    func refreshPermissions(forDraft draft: AppSettings, reconcileShortcuts: Bool) {
+        let needsHID = settingsNeedHID(runtime) || settingsNeedHID(draft)
+        _ = permissions.refresh(needsHID: needsHID)
+        objectWillChange.send()
+        if reconcileShortcuts {
+            self.reconcileShortcuts()
+        }
+    }
+
     func updateMeasurementCount(_ count: Int) {
         measurementCount = count
     }
@@ -304,10 +317,11 @@ final class AppController: ObservableObject {
     }
 
     private func refreshPermissions(for settings: AppSettings) {
-        let needsHID = settings.macros.contains {
-            $0.isEnabled && $0.shortcut.isHIDOnly
-        }
-        _ = permissions.refresh(needsHID: needsHID)
+        _ = permissions.refresh(needsHID: settingsNeedHID(settings))
+    }
+
+    private func settingsNeedHID(_ settings: AppSettings) -> Bool {
+        settings.macros.contains { $0.isEnabled && $0.shortcut.isHIDOnly }
     }
 
     @discardableResult

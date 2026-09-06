@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 struct MenuBarViewModel {
@@ -17,11 +16,16 @@ struct MenuBarViewModel {
     }
 }
 
+struct AppMenuActions {
+    let openSettings: () -> Void
+    let openAbout: () -> Void
+    let terminate: () -> Void
+}
+
 @MainActor
 struct MenuBarView: View {
     @ObservedObject var app: AppController
-    @ObservedObject var login: LoginItemController
-    let openSettingsWindow: () -> Void
+    let actions: AppMenuActions
     let refresh: () -> Void
 
     var body: some View {
@@ -50,7 +54,7 @@ struct MenuBarView: View {
             }
         }
 
-        if app.permissionState.inputMonitoring == false {
+        if app.showsInputMonitoringActions {
             Button("Input Monitoring 권한 요청") {
                 app.requestInputMonitoring()
             }
@@ -59,24 +63,12 @@ struct MenuBarView: View {
             }
         }
 
-        Button("설정…", action: openSettingsWindow)
-
-        Toggle(
-            "로그인 시 실행",
-            isOn: Binding(
-                get: { login.isEnabled },
-                set: { enabled in login.setEnabledReportingError(enabled) }
-            )
-        )
-        if let errorMessage = login.errorMessage {
-            Text(errorMessage)
-        }
+        Button("설정…", action: actions.openSettings)
+        Button("Kocro 정보", action: actions.openAbout)
 
         Divider()
 
-        Button("종료") {
-            NSApplication.shared.terminate(nil)
-        }
+        Button("종료", action: actions.terminate)
         .onAppear(perform: refresh)
     }
 

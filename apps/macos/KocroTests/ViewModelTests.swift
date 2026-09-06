@@ -4,6 +4,164 @@ import XCTest
 
 @MainActor
 final class ViewModelTests: XCTestCase {
+    func testSettingsStartsInMacrosSectionAndSupportsGeneralSelection() {
+        let model = SettingsViewModel(settings: .init(macros: []), validator: .init())
+
+        XCTAssertEqual(model.selectedSection, .macros)
+
+        model.selectedSection = .general
+
+        XCTAssertEqual(model.selectedSection, .general)
+        XCTAssertEqual(SettingsSection.allCases, [.macros, .general])
+    }
+
+    func testGeneralSettingsExposesPermissionsAndDraftHIDRequirement() {
+        let permissions = GeneralPermissionSpy(
+            state: .init(accessibility: false, inputMonitoring: false)
+        )
+        let app = AppController(
+            store: StoreSpy(loadResult: .success(.init(macros: []))),
+            shortcuts: ShortcutSpy(),
+            permissions: permissions,
+            queue: QueueSpy()
+        )
+        app.start()
+        app.draft = .init(macros: [Fixtures.hid(21)])
+        let login = LoginItemController(service: LoginServiceSpy(status: .notRegistered))
+        let general = GeneralSettingsViewModel(app: app, login: login)
+
+        XCTAssertFalse(general.loginEnabled)
+        XCTAssertNil(general.loginErrorMessage)
+        XCTAssertFalse(general.accessibilityGranted)
+        XCTAssertTrue(general.showsInputMonitoring)
+        XCTAssertEqual(general.inputMonitoringGranted, false)
+
+        general.requestAccessibility()
+        general.openAccessibilitySettings()
+        general.requestInputMonitoring()
+        general.openInputMonitoringSettings()
+
+        XCTAssertEqual(permissions.accessibilityRequestCount, 1)
+        XCTAssertEqual(permissions.inputMonitoringRequestCount, 1)
+        XCTAssertEqual(permissions.openedSettings, [.accessibility, .inputMonitoring])
+    }
+
+    func testGeneralSettingsHidesInputMonitoringWithoutEnabledRuntimeOrDraftHID() {
+        let app = AppController(
+            store: StoreSpy(loadResult: .success(.init(macros: [Fixtures.carbon(13)]))),
+            shortcuts: ShortcutSpy(),
+            permissions: PermissionSpy(),
+            queue: QueueSpy()
+        )
+        app.start()
+        let login = LoginItemController(service: LoginServiceSpy(status: .notRegistered))
+
+        XCTAssertFalse(GeneralSettingsViewModel(app: app, login: login).showsInputMonitoring)
+    }
+
+    func testGeneralSettingsRefreshesInputMonitoringForDraftOnlyHID() {
+        let permissions = PermissionSpy(
+            state: .init(accessibility: true, inputMonitoring: nil)
+        )
+        let app = AppController(
+            store: StoreSpy(loadResult: .success(.init(macros: []))),
+            shortcuts: ShortcutSpy(),
+            permissions: permissions,
+            queue: QueueSpy()
+        )
+        app.start()
+        permissions.refreshedState = .init(accessibility: true, inputMonitoring: true)
+        let draft = AppSettings(macros: [Fixtures.hid(21)])
+        let login = LoginItemController(service: LoginServiceSpy(status: .notRegistered))
+        let general = GeneralSettingsViewModel(app: app, login: login, draft: draft)
+
+        XCTAssertNil(general.inputMonitoringGranted)
+
+        general.refreshPermissions()
+
+        XCTAssertEqual(permissions.refreshNeedsHID.last, true)
+        XCTAssertEqual(general.inputMonitoringGranted, true)
+    }
+
+    func testActiveRefreshIncludesDraftHIDAndReconcilesRuntimeShortcuts() {
+        let runtime = AppSettings(macros: [Fixtures.carbon(13)])
+        let draft = AppSettings(macros: [Fixtures.hid(21)])
+        let permissions = PermissionSpy(
+            state: .init(accessibility: true, inputMonitoring: nil)
+        )
+        let shortcuts = ShortcutSpy()
+        let app = AppController(
+            store: StoreSpy(loadResult: .success(runtime)),
+            shortcuts: shortcuts,
+            permissions: permissions,
+            queue: QueueSpy()
+        )
+        app.start()
+        permissions.refreshedState = .init(accessibility: true, inputMonitoring: true)
+
+        app.refreshPermissions(forDraft: draft, reconcileShortcuts: true)
+
+        XCTAssertEqual(permissions.refreshNeedsHID.last, true)
+        XCTAssertEqual(app.permissionState.inputMonitoring, true)
+        XCTAssertEqual(shortcuts.commitCount, 2)
+        XCTAssertEqual(shortcuts.prepareCalls.last, runtime)
+    }
+
+    func testMenuRefreshIncludesDraftHIDWithoutShowingRuntimeOnlyPermissionAction() {
+        let runtime = AppSettings(macros: [Fixtures.carbon(13)])
+        let draft = AppSettings(macros: [Fixtures.hid(21)])
+        let permissions = PermissionSpy(
+            state: .init(accessibility: true, inputMonitoring: nil)
+        )
+        let shortcuts = ShortcutSpy()
+        let app = AppController(
+            store: StoreSpy(loadResult: .success(runtime)),
+            shortcuts: shortcuts,
+            permissions: permissions,
+            queue: QueueSpy()
+        )
+        app.start()
+        permissions.refreshedState = .init(accessibility: true, inputMonitoring: false)
+
+        app.refreshPermissions(forDraft: draft, reconcileShortcuts: true)
+
+        XCTAssertEqual(permissions.refreshNeedsHID.last, true)
+        XCTAssertEqual(app.permissionState.inputMonitoring, false)
+        XCTAssertEqual(shortcuts.commitCount, 2)
+        XCTAssertFalse(app.showsInputMonitoringActions)
+    }
+
+    func testInjectedAppMenuActionsInvokeEachClosureOnce() {
+        var settingsOpenCount = 0
+        var aboutCount = 0
+        var terminateCount = 0
+        let actions = AppMenuActions(
+            openSettings: { settingsOpenCount += 1 },
+            openAbout: { aboutCount += 1 },
+            terminate: { terminateCount += 1 }
+        )
+
+        actions.openSettings()
+        actions.openAbout()
+        actions.terminate()
+
+        XCTAssertEqual(settingsOpenCount, 1)
+        XCTAssertEqual(aboutCount, 1)
+        XCTAssertEqual(terminateCount, 1)
+    }
+
+    func testLegacySettingsWindowActionDispatchesPreferencesSelector() {
+        var selectors: [Selector] = []
+        let action = LegacySettingsWindowAction { selector in
+            selectors.append(selector)
+            return true
+        }
+
+        action.open()
+
+        XCTAssertEqual(selectors.map(NSStringFromSelector), ["showPreferencesWindow:"])
+    }
+
     func testStatusPriorityAndRegisteredCount() {
         let menu = MenuBarViewModel(
             statuses: [.inputMonitoringRequired, .accessibilityRequired, .settingsError],
@@ -786,6 +944,23 @@ final class ViewModelTests: XCTestCase {
             keyCode: keyCode
         ))
     }
+}
+
+private final class GeneralPermissionSpy: PermissionServing {
+    var state: PermissionState
+    private(set) var accessibilityRequestCount = 0
+    private(set) var inputMonitoringRequestCount = 0
+    private(set) var openedSettings: [PrivacyKind] = []
+
+    init(state: PermissionState) {
+        self.state = state
+    }
+
+    func refresh(needsHID: Bool) -> PermissionState { state }
+    func requestAccessibility() { accessibilityRequestCount += 1 }
+    func requestInputMonitoring() { inputMonitoringRequestCount += 1 }
+    func openSettings(_ kind: PrivacyKind) { openedSettings.append(kind) }
+    func currentAccessibility() -> Bool { state.accessibility }
 }
 
 private final class AccessibilityNotificationSpy: AccessibilityNotificationPosting {
