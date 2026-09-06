@@ -8,6 +8,7 @@ final class SettingsValidatorTests: XCTestCase {
         let value = AppSettings.defaults
 
         XCTAssertEqual(value.macros.map(\.shortcut.key), (13...24).map { .function($0) })
+        XCTAssertEqual(value.macros.map(\.title), (1...12).map { "매크로 \($0)" })
         XCTAssertEqual(Set(value.macros.map(\.id)).count, 12)
         XCTAssertTrue(value.macros.allSatisfy { !$0.isEnabled && $0.text.isEmpty })
         XCTAssertNoThrow(try validator.validate(value))
@@ -23,6 +24,12 @@ final class SettingsValidatorTests: XCTestCase {
             from: JSONEncoder().encode(reversed)
         )
         XCTAssertEqual(decoded.macros.map(\.id), reversed.macros.map(\.id))
+    }
+
+    func testDisplayTitleFallsBackOnlyForTheEmptyString() {
+        XCTAssertEqual(Fixtures.macro(title: "", text: "x").displayTitle, "이름 없는 매크로")
+        XCTAssertEqual(Fixtures.macro(title: "   ", text: "x").displayTitle, "   ")
+        XCTAssertEqual(Fixtures.macro(title: " 제목 ", text: "x").displayTitle, " 제목 ")
     }
 
     func testIdentityLengthAndEnabledValues() {
@@ -81,6 +88,15 @@ final class SettingsValidatorTests: XCTestCase {
         ]
 
         XCTAssertThrowsError(try validator.validate(.init(macros: values)))
+    }
+
+    func testRegistrationIdentityRejectsUnsupportedModifierBits() {
+        let unsupported = ModifierSet(rawValue: ModifierSet.command.rawValue | 0x10)
+
+        XCTAssertNil(
+            ShortcutDefinition(key: .keyCode(0), modifiers: unsupported)
+                .registrationIdentity
+        )
     }
 
     func testShortcutMatrixAndDuplicates() {

@@ -2,6 +2,28 @@ import AppKit
 import SwiftUI
 
 @MainActor
+struct LegacySettingsWindowAction {
+    let sendAction: (Selector) -> Bool
+
+    init(sendAction: @escaping (Selector) -> Bool) {
+        self.sendAction = sendAction
+    }
+
+    func open() {
+        let didOpenPreferences = sendAction(Selector(("showPreferencesWindow:")))
+        if !didOpenPreferences {
+            _ = sendAction(Selector(("showSettingsWindow:")))
+        }
+    }
+
+    static var application: Self {
+        Self { selector in
+            NSApp.sendAction(selector, to: nil, from: nil)
+        }
+    }
+}
+
+@MainActor
 final class AppDependencies: ObservableObject {
     let controller: AppController
     let settings: SettingsViewModel
@@ -75,7 +97,10 @@ final class AppDependencies: ObservableObject {
 
     func menuDidOpen() {
         login.refreshStatus()
-        controller.refreshPermissions()
+        controller.refreshPermissions(
+            forDraft: settings.settings,
+            reconcileShortcuts: true
+        )
         settings.synchronizeStatus(from: controller)
     }
 
@@ -87,13 +112,22 @@ final class AppDependencies: ObservableObject {
 
     func applicationDidBecomeActive() {
         login.refreshStatus()
-        controller.refreshPermissions()
+        controller.refreshPermissions(
+            forDraft: settings.settings,
+            reconcileShortcuts: true
+        )
         settings.synchronizeStatus(from: controller)
     }
 
-    func openSettingsWindow() {
-        settingsDidOpen()
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    func menuActions(openSettings: @escaping () -> Void) -> AppMenuActions {
+        AppMenuActions(
+            openSettings: { [weak self] in
+                self?.settingsDidOpen()
+                openSettings()
+            },
+            openAbout: { NSApp.orderFrontStandardAboutPanel(nil) },
+            terminate: { NSApp.terminate(nil) }
+        )
     }
 
     private func save(_ value: AppSettings) {
@@ -113,12 +147,19 @@ struct KocroApp: App {
 
     var body: some Scene {
         MenuBarExtra("Kocro", image: "MenuBarIcon") {
-            MenuBarView(
-                app: dependencies.controller,
-                login: dependencies.login,
-                openSettingsWindow: dependencies.openSettingsWindow,
-                refresh: dependencies.menuDidOpen
-            )
+            Group {
+                if #available(macOS 14.0, *) {
+                    ModernMenuBarContent(dependencies: dependencies)
+                } else {
+                    MenuBarView(
+                        app: dependencies.controller,
+                        actions: dependencies.menuActions(
+                            openSettings: LegacySettingsWindowAction.application.open
+                        ),
+                        refresh: dependencies.menuDidOpen
+                    )
+                }
+            }
             .onChange(of: scenePhase) { phase in
                 if phase == .active {
                     dependencies.applicationDidBecomeActive()
@@ -129,6 +170,8 @@ struct KocroApp: App {
         Settings {
             SettingsView(
                 model: dependencies.settings,
+                app: dependencies.controller,
+                login: dependencies.login,
                 prepare: dependencies.settingsDidOpen
             )
             .onChange(of: scenePhase) { phase in
@@ -137,5 +180,20 @@ struct KocroApp: App {
                 }
             }
         }
+    }
+}
+
+@available(macOS 14.0, *)
+@MainActor
+private struct ModernMenuBarContent: View {
+    @ObservedObject var dependencies: AppDependencies
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        MenuBarView(
+            app: dependencies.controller,
+            actions: dependencies.menuActions(openSettings: openSettings.callAsFunction),
+            refresh: dependencies.menuDidOpen
+        )
     }
 }

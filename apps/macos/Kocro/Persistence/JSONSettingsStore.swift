@@ -18,7 +18,12 @@ final class JSONSettingsStore: SettingsStoring {
         }
 
         do {
-            let decoded = try JSONDecoder().decode(AppSettings.self, from: file.read())
+            let persisted = try JSONDecoder().decode(PersistedAppSettings.self, from: file.read())
+            let decoded = AppSettings(
+                macros: persisted.macros.enumerated().map { index, macro in
+                    macro.definition(defaultTitle: "매크로 \(index + 1)")
+                }
+            )
             return try validator.validate(decoded)
         } catch {
             throw StoreError.invalidFile
@@ -30,6 +35,51 @@ final class JSONSettingsStore: SettingsStoring {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try file.atomicReplace(with: encoder.encode(valid), permissions: 0o600)
+    }
+}
+
+private struct PersistedAppSettings: Decodable {
+    let macros: [PersistedMacroDefinition]
+}
+
+private struct PersistedMacroDefinition: Decodable {
+    let id: UUID
+    let title: String?
+    let isEnabled: Bool
+    let shortcut: ShortcutDefinition
+    let text: String
+    let trailingKey: TrailingKey?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case isEnabled
+        case shortcut
+        case text
+        case trailingKey
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        title = container.contains(.title)
+            ? try container.decode(String.self, forKey: .title)
+            : nil
+        isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
+        shortcut = try container.decode(ShortcutDefinition.self, forKey: .shortcut)
+        text = try container.decode(String.self, forKey: .text)
+        trailingKey = try container.decodeIfPresent(TrailingKey.self, forKey: .trailingKey)
+    }
+
+    func definition(defaultTitle: String) -> MacroDefinition {
+        MacroDefinition(
+            id: id,
+            title: title ?? defaultTitle,
+            isEnabled: isEnabled,
+            shortcut: shortcut,
+            text: text,
+            trailingKey: trailingKey
+        )
     }
 }
 

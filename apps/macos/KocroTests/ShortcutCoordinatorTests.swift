@@ -12,7 +12,8 @@ final class ShortcutCoordinatorTests: XCTestCase {
         _ = coordinator.replace(with: [Fixtures.carbon(13)])
         coordinator.shutdown()
 
-        XCTAssertEqual(carbon.lifecycleMainThreads, [true, true, true])
+        XCTAssertFalse(carbon.lifecycleMainThreads.isEmpty)
+        XCTAssertTrue(carbon.lifecycleMainThreads.allSatisfy { $0 })
     }
 
     func testCrossSourceCallbacksAreSerializedInArrivalOrder() {
@@ -141,8 +142,8 @@ final class ShortcutCoordinatorTests: XCTestCase {
         XCTAssertEqual(carbon.registrationCount, 1)
 
         coordinator.shutdown()
-        XCTAssertEqual(carbon.unregisterAllCount, 2)
-        XCTAssertEqual(hid.stopCount, 2)
+        XCTAssertEqual(carbon.unregisterAllCount, 1)
+        XCTAssertEqual(hid.stopCount, 1)
     }
 
     func testRemovingAllHIDStopsMonitorWithoutPermissionCheck() {
@@ -152,7 +153,7 @@ final class ShortcutCoordinatorTests: XCTestCase {
         _ = coordinator.replace(with: [Fixtures.hid(21)])
         _ = coordinator.replace(with: [Fixtures.carbon(13)])
 
-        XCTAssertEqual(hid.stopCount, 2)
+        XCTAssertEqual(hid.stopCount, 1)
         XCTAssertEqual(hid.permissionChecks, 1)
     }
 
@@ -202,5 +203,305 @@ final class ShortcutCoordinatorTests: XCTestCase {
 
         XCTAssertNotEqual(staleID, currentID)
         XCTAssertEqual(triggered, [second.id])
+    }
+
+    func testPrepareReusesRegistrationIdentityForNewUUIDAndSwap() {
+        let carbon = CarbonSpy()
+        let coordinator = ShortcutCoordinator(
+            carbon: carbon,
+            hid: HIDSpy(permission: true, starts: true)
+        )
+        let firstF13 = Fixtures.carbon(13)
+        let firstF14 = Fixtures.carbon(14)
+        _ = coordinator.replace(with: [firstF13, firstF14])
+        let originalIDs = carbon.registrations.map(\.id)
+        let newF13 = Fixtures.carbon(13)
+        var swappedF14 = firstF13
+        swappedF14.shortcut = firstF14.shortcut
+
+        let candidate = coordinator.prepareReplacement(
+            with: AppSettings(macros: [swappedF14, newF13])
+        )
+
+        XCTAssertEqual(carbon.registrations.map(\.id), originalIDs)
+        coordinator.commit(candidate)
+        var triggered: [UUID] = []
+        coordinator.onTrigger = { id, _ in triggered.append(id) }
+        carbon.send(id: originalIDs[0])
+        carbon.send(id: originalIDs[1])
+        XCTAssertEqual(triggered, [newF13.id, swappedF14.id])
+    }
+
+    func testProvisionalCarbonRegistrationIsUnroutedUntilCommit() {
+        let carbon = CarbonSpy()
+        let coordinator = ShortcutCoordinator(
+            carbon: carbon,
+            hid: HIDSpy(permission: true, starts: true)
+        )
+        let old = Fixtures.carbon(13)
+        _ = coordinator.replace(with: [old])
+        let added = Fixtures.carbon(15)
+        var triggered: [UUID] = []
+        coordinator.onTrigger = { id, _ in triggered.append(id) }
+
+        let candidate = coordinator.prepareReplacement(
+            with: AppSettings(macros: [old, added])
+        )
+        let existingID = carbon.registrations.first!.id
+        let provisionalID = carbon.registrations.last!.id
+        carbon.send(id: existingID)
+        carbon.send(id: provisionalID)
+        XCTAssertEqual(triggered, [old.id])
+
+        coordinator.commit(candidate)
+        carbon.send(id: provisionalID)
+        XCTAssertEqual(triggered, [old.id, added.id])
+    }
+
+    func testCancelReleasesOnlyCandidateRegistrationsAndPreservesCurrentRoutes() {
+        let carbon = CarbonSpy()
+        let coordinator = ShortcutCoordinator(
+            carbon: carbon,
+            hid: HIDSpy(permission: true, starts: true)
+        )
+        let oldF13 = Fixtures.carbon(13)
+        let oldF14 = Fixtures.carbon(14)
+        _ = coordinator.replace(with: [oldF13, oldF14])
+        let oldIDs = carbon.registrations.map(\.id)
+        var triggered: [UUID] = []
+        coordinator.onTrigger = { id, _ in triggered.append(id) }
+
+        let candidate = coordinator.prepareReplacement(
+            with: AppSettings(macros: [Fixtures.carbon(15)])
+        )
+        let provisionalID = carbon.registrations.last!.id
+        coordinator.cancel(candidate)
+
+        XCTAssertEqual(carbon.unregisteredIDs, [provisionalID])
+        carbon.send(id: oldIDs[0])
+        carbon.send(id: oldIDs[1])
+        carbon.send(id: provisionalID)
+        XCTAssertEqual(triggered, [oldF13.id, oldF14.id])
+    }
+
+    func testCarbonCollisionDisablesOnlyFailedCandidateMacro() {
+        let carbon = CarbonSpy(failingRegistration: 2)
+        let hid = HIDSpy(permission: false, starts: true)
+        let coordinator = ShortcutCoordinator(carbon: carbon, hid: hid)
+        let carbonMacro = Fixtures.carbon(13)
+        let conflicted = Fixtures.carbon(14)
+        let hidMacro = Fixtures.hid(21)
+
+        let candidate = coordinator.prepareReplacement(
+            with: AppSettings(macros: [carbonMacro, conflicted, hidMacro])
+        )
+
+        XCTAssertEqual(candidate.states[carbonMacro.id], .registered)
+        XCTAssertEqual(candidate.states[conflicted.id], .registrationFailed)
+        XCTAssertEqual(candidate.states[hidMacro.id], .inputMonitoringRequired)
+        XCTAssertEqual(candidate.settings.macros.map(\.isEnabled), [true, false, true])
+        coordinator.cancel(candidate)
+    }
+
+    func testCancelDoesNotReplaceActiveHIDGeneration() {
+        let carbon = CarbonSpy()
+        let hid = HIDSpy(permission: true, starts: true)
+        let coordinator = ShortcutCoordinator(carbon: carbon, hid: hid)
+        let current = Fixtures.hid(21)
+        _ = coordinator.replace(with: [current])
+        var triggered: [UUID] = []
+        coordinator.onTrigger = { id, _ in triggered.append(id) }
+
+        let candidate = coordinator.prepareReplacement(
+            with: AppSettings(macros: [Fixtures.hid(22)])
+        )
+        coordinator.cancel(candidate)
+        hid.send(function: 21)
+
+        XCTAssertEqual(triggered, [current.id])
+        XCTAssertEqual(hid.stopCount, 0)
+        XCTAssertEqual(hid.usages, [21])
+    }
+
+    func testCommitWithoutHIDPermissionStopsThePreviousGeneration() {
+        let hid = HIDSpy(permission: true, starts: true)
+        let coordinator = ShortcutCoordinator(carbon: CarbonSpy(), hid: hid)
+        _ = coordinator.replace(with: [Fixtures.hid(21)])
+        hid.permission = false
+
+        let candidate = coordinator.prepareReplacement(
+            with: AppSettings(macros: [Fixtures.hid(22)])
+        )
+        coordinator.commit(candidate)
+
+        XCTAssertEqual(hid.stopCount, 1)
+    }
+
+    func testCommitThenCancelDoesNotReleaseActiveCandidateRegistration() {
+        let carbon = CarbonSpy()
+        let coordinator = ShortcutCoordinator(
+            carbon: carbon,
+            hid: HIDSpy(permission: true, starts: true)
+        )
+        let macro = Fixtures.carbon(15)
+        let candidate = coordinator.prepareReplacement(
+            with: AppSettings(macros: [macro])
+        )
+        let registrationID = carbon.registrations.last!.id
+
+        coordinator.commit(candidate)
+        coordinator.cancel(candidate)
+
+        var triggered: [UUID] = []
+        coordinator.onTrigger = { id, _ in triggered.append(id) }
+        carbon.send(id: registrationID)
+        XCTAssertEqual(triggered, [macro.id])
+        XCTAssertTrue(carbon.unregisteredIDs.isEmpty)
+    }
+
+    func testCancelThenCommitDoesNotPublishReleasedCandidateRoute() {
+        let carbon = CarbonSpy()
+        let coordinator = ShortcutCoordinator(
+            carbon: carbon,
+            hid: HIDSpy(permission: true, starts: true)
+        )
+        let current = Fixtures.carbon(13)
+        _ = coordinator.replace(with: [current])
+        let currentID = carbon.registrations.last!.id
+        let replacement = Fixtures.carbon(15)
+        let candidate = coordinator.prepareReplacement(
+            with: AppSettings(macros: [replacement])
+        )
+        let releasedID = carbon.registrations.last!.id
+
+        coordinator.cancel(candidate)
+        XCTAssertNil(coordinator.commit(candidate))
+
+        var triggered: [UUID] = []
+        coordinator.onTrigger = { id, _ in triggered.append(id) }
+        carbon.send(id: currentID)
+        carbon.send(id: releasedID)
+        XCTAssertEqual(triggered, [current.id])
+        XCTAssertEqual(carbon.unregisteredIDs, [releasedID])
+    }
+
+    func testRepeatedTerminalCallsConsumeCandidateOnlyOnce() {
+        let carbon = CarbonSpy()
+        let coordinator = ShortcutCoordinator(
+            carbon: carbon,
+            hid: HIDSpy(permission: true, starts: true)
+        )
+        let candidate = coordinator.prepareReplacement(
+            with: AppSettings(macros: [Fixtures.carbon(15)])
+        )
+        var snapshotInstallCount = 0
+
+        coordinator.commit(candidate) { _ in snapshotInstallCount += 1 }
+        coordinator.commit(candidate) { _ in snapshotInstallCount += 1 }
+        coordinator.cancel(candidate)
+        coordinator.cancel(candidate)
+
+        XCTAssertEqual(snapshotInstallCount, 1)
+        XCTAssertTrue(carbon.unregisteredIDs.isEmpty)
+    }
+
+    func testCrossCoordinatorCandidateUseCannotMutateRegistrationsOrRoutes() {
+        let firstCarbon = CarbonSpy()
+        let secondCarbon = CarbonSpy()
+        let first = ShortcutCoordinator(
+            carbon: firstCarbon,
+            hid: HIDSpy(permission: true, starts: true)
+        )
+        let second = ShortcutCoordinator(
+            carbon: secondCarbon,
+            hid: HIDSpy(permission: true, starts: true)
+        )
+        let firstMacro = Fixtures.carbon(15)
+        let secondMacro = Fixtures.carbon(13)
+        let candidate = first.prepareReplacement(
+            with: AppSettings(macros: [firstMacro])
+        )
+        _ = second.replace(with: [secondMacro])
+        let secondRegistrationID = secondCarbon.registrations.last!.id
+
+        second.cancel(candidate)
+        XCTAssertNil(second.commit(candidate))
+
+        var triggered: [UUID] = []
+        second.onTrigger = { id, _ in triggered.append(id) }
+        secondCarbon.send(id: secondRegistrationID)
+        XCTAssertEqual(triggered, [secondMacro.id])
+        XCTAssertTrue(secondCarbon.unregisteredIDs.isEmpty)
+        first.cancel(candidate)
+    }
+
+    func testNewPrepareSupersedesAndReleasesPreviousUnresolvedCandidate() {
+        let carbon = CarbonSpy()
+        let coordinator = ShortcutCoordinator(
+            carbon: carbon,
+            hid: HIDSpy(permission: true, starts: true)
+        )
+        let firstCandidate = coordinator.prepareReplacement(
+            with: AppSettings(macros: [Fixtures.carbon(15)])
+        )
+        let firstID = carbon.registrations.last!.id
+        let replacement = Fixtures.carbon(15)
+
+        let secondCandidate = coordinator.prepareReplacement(
+            with: AppSettings(macros: [replacement])
+        )
+        let secondID = carbon.registrations.last!.id
+        XCTAssertNil(coordinator.commit(firstCandidate))
+        coordinator.cancel(firstCandidate)
+        coordinator.commit(secondCandidate)
+
+        XCTAssertEqual(carbon.unregisteredIDs, [firstID])
+        XCTAssertNotEqual(firstID, secondID)
+        var triggered: [UUID] = []
+        coordinator.onTrigger = { id, _ in triggered.append(id) }
+        carbon.send(id: secondID)
+        XCTAssertEqual(triggered, [replacement.id])
+    }
+
+    func testAbandonedCandidateReleasesItsProvisionalRegistration() {
+        let carbon = CarbonSpy()
+        let coordinator = ShortcutCoordinator(
+            carbon: carbon,
+            hid: HIDSpy(permission: true, starts: true)
+        )
+        var candidate: (any ShortcutReplacementCandidate)? = coordinator.prepareReplacement(
+            with: AppSettings(macros: [Fixtures.carbon(15)])
+        )
+        let registrationID = carbon.registrations.last!.id
+        XCTAssertNotNil(candidate?.settings)
+
+        candidate = nil
+
+        XCTAssertEqual(carbon.unregisteredIDs, [registrationID])
+    }
+
+    func testCandidateAbandonedOnBackgroundReleasesRegistrationOnMain() {
+        let carbon = CarbonSpy()
+        let coordinator = ShortcutCoordinator(
+            carbon: carbon,
+            hid: HIDSpy(permission: true, starts: true)
+        )
+        let unregistered = expectation(description: "candidate registration released")
+        carbon.onUnregisterID = { _ in
+            XCTAssertTrue(Thread.isMainThread)
+            unregistered.fulfill()
+        }
+        let box: ObjectReleaseBox = {
+            let candidate = coordinator.prepareReplacement(
+                with: AppSettings(macros: [Fixtures.carbon(15)])
+            )
+            return ObjectReleaseBox(candidate)
+        }()
+
+        DispatchQueue.global().async {
+            box.releaseValue()
+        }
+
+        wait(for: [unregistered], timeout: 1)
     }
 }

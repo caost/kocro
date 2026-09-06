@@ -59,14 +59,17 @@ final class AppControllerTests: XCTestCase {
         let queue = QueueSpy()
         let app = makeApp(store: store, shortcuts: shortcuts, queue: queue)
         app.start()
-        app.draft = Fixtures.settings(text: "new")
+        let new = Fixtures.settings(text: "new")
+        app.draft = new
         store.saveError = StoreError.io
 
         app.save()
         shortcuts.trigger(old.macros[0].id)
 
         XCTAssertEqual(app.runtime, old)
-        XCTAssertEqual(shortcuts.replaceCalls, [old.macros])
+        XCTAssertEqual(shortcuts.prepareCalls, [old, new])
+        XCTAssertEqual(shortcuts.commitCount, 1)
+        XCTAssertEqual(shortcuts.cancelCount, 1)
         XCTAssertEqual(queue.requests.map(\.text), ["old"])
         XCTAssertNotNil(app.saveError)
     }
@@ -81,15 +84,278 @@ final class AppControllerTests: XCTestCase {
         app.draft = new
         store.onSave = {
             XCTAssertEqual(app.runtime, old)
-            XCTAssertEqual(shortcuts.replaceCalls, [old.macros])
+            XCTAssertEqual(shortcuts.prepareCalls, [old, new])
+            XCTAssertEqual(shortcuts.commitCount, 1)
         }
 
         app.save()
 
         XCTAssertEqual(store.savedValues, [new])
         XCTAssertEqual(app.runtime, new)
-        XCTAssertEqual(shortcuts.replaceCalls, [old.macros, new.macros])
+        XCTAssertEqual(shortcuts.prepareCalls, [old, new])
+        XCTAssertEqual(shortcuts.commitCount, 2)
         XCTAssertNil(app.saveError)
+    }
+
+    func testCarbonCollisionPersistsDisabledCandidateBeforeCommittingOwnership() {
+        let old = Fixtures.settings(text: "old")
+        let successful = Fixtures.carbon(13)
+        let conflicted = Fixtures.carbon(14)
+        let edited = AppSettings(macros: [successful, conflicted])
+        var normalized = edited
+        normalized.macros[1].isEnabled = false
+        let store = StoreSpy(loadResult: .success(old))
+        let shortcuts = ShortcutSpy()
+        let queue = QueueSpy()
+        let app = makeApp(store: store, shortcuts: shortcuts, queue: queue)
+        app.start()
+        app.draft = edited
+        shortcuts.states = [
+            successful.id: .registered,
+            conflicted.id: .registrationFailed,
+        ]
+        shortcuts.nextCandidateSettings = normalized
+        store.onSave = {
+            XCTAssertEqual(app.runtime, old)
+            shortcuts.trigger(old.macros[0].id)
+            XCTAssertEqual(queue.requests.map(\.text), ["old"])
+            XCTAssertEqual(shortcuts.commitCount, 1)
+        }
+
+        app.save()
+
+        XCTAssertEqual(store.savedValues, [normalized])
+        XCTAssertEqual(app.runtime, normalized)
+        XCTAssertEqual(app.draft, normalized)
+        XCTAssertEqual(app.registration[successful.id], .registered)
+        XCTAssertEqual(app.registration[conflicted.id], .registrationFailed)
+        XCTAssertEqual(shortcuts.commitCount, 2)
+    }
+
+    func testCandidateSaveFailureCancelsOnceAndPreservesRuntimeRoutesSnapshotAndDraft() {
+        let old = Fixtures.settings(text: "old")
+        let edited = AppSettings(macros: [old.macros[0].withText("edited")])
+        let store = StoreSpy(loadResult: .success(old))
+        let shortcuts = ShortcutSpy()
+        let queue = QueueSpy()
+        let app = makeApp(store: store, shortcuts: shortcuts, queue: queue)
+        app.start()
+        app.draft = edited
+        store.failOnce(StoreError.io)
+        store.onSave = {
+            XCTAssertEqual(app.runtime, old)
+            shortcuts.trigger(old.macros[0].id)
+            XCTAssertEqual(queue.requests.map(\.text), ["old"])
+        }
+
+        app.save()
+        shortcuts.trigger(old.macros[0].id)
+
+        XCTAssertEqual(shortcuts.cancelCount, 1)
+        XCTAssertEqual(shortcuts.commitCount, 1)
+        XCTAssertEqual(app.runtime, old)
+        XCTAssertEqual(app.draft, edited)
+        XCTAssertEqual(queue.requests.map(\.text), ["old", "old"])
+        XCTAssertNotNil(app.saveError)
+    }
+
+    func testLaterSaveReplacesPreviousCollisionRegistrationMap() {
+        let old = Fixtures.settings(text: "old")
+        let first = Fixtures.carbon(13)
+        let conflicted = Fixtures.carbon(14)
+        let store = StoreSpy(loadResult: .success(old))
+        let shortcuts = ShortcutSpy(states: [
+            first.id: .registered,
+            conflicted.id: .registrationFailed,
+        ])
+        let app = makeApp(store: store, shortcuts: shortcuts)
+        app.start()
+        app.draft = .init(macros: [first, conflicted])
+        var normalized = app.draft
+        normalized.macros[1].isEnabled = false
+        shortcuts.nextCandidateSettings = normalized
+        app.save()
+        XCTAssertEqual(app.registration[conflicted.id], .registrationFailed)
+
+        let replacement = Fixtures.carbon(15)
+        app.draft = .init(macros: [first, replacement])
+        shortcuts.states = [first.id: .registered, replacement.id: .registered]
+        shortcuts.nextCandidateSettings = app.draft
+        app.save()
+
+        XCTAssertEqual(app.registration, [
+            first.id: .registered,
+            replacement.id: .registered,
+        ])
+    }
+
+    func testPermissionRefreshKeepsCollisionErrorUntilNextSave() {
+        let successful = Fixtures.carbon(13)
+        let conflicted = Fixtures.carbon(14)
+        let store = StoreSpy(loadResult: .success(.init(macros: [])))
+        let shortcuts = ShortcutSpy()
+        let app = makeApp(store: store, shortcuts: shortcuts)
+        app.start()
+        app.draft = .init(macros: [successful, conflicted])
+        var normalized = app.draft
+        normalized.macros[1].isEnabled = false
+        shortcuts.states = [
+            successful.id: .registered,
+            conflicted.id: .registrationFailed,
+        ]
+        shortcuts.nextCandidateSettings = normalized
+        app.save()
+
+        shortcuts.states = [:]
+        app.refreshPermissions()
+
+        XCTAssertEqual(app.registration[conflicted.id], .registrationFailed)
+    }
+
+    func testLoadCollisionKeepsPersistedSettingsEnabledAndRefreshRetriesWithoutSaving() {
+        let macro = Fixtures.carbon(13)
+        let settings = AppSettings(macros: [macro])
+        let store = StoreSpy(loadResult: .success(settings))
+        let carbon = CarbonSpy(failingRegistration: 1)
+        let coordinator = ShortcutCoordinator(
+            carbon: carbon,
+            hid: HIDSpy(permission: true, starts: true)
+        )
+        let app = AppController(
+            store: store,
+            shortcuts: coordinator,
+            permissions: PermissionSpy(),
+            queue: QueueSpy()
+        )
+
+        app.start()
+
+        XCTAssertEqual(app.runtime, settings)
+        XCTAssertEqual(app.draft, settings)
+        XCTAssertTrue(app.runtime.macros[0].isEnabled)
+        XCTAssertEqual(app.registration[macro.id], .registrationFailed)
+        XCTAssertTrue(store.savedValues.isEmpty)
+
+        carbon.failingRegistration = nil
+        app.refreshPermissions()
+
+        XCTAssertEqual(app.runtime, settings)
+        XCTAssertEqual(app.draft, settings)
+        XCTAssertEqual(app.registration[macro.id], .registered)
+        XCTAssertEqual(carbon.registrations.count, 2)
+        XCTAssertTrue(store.savedValues.isEmpty)
+    }
+
+    func testRealCoordinatorKeepsExistingRouteAndSnapshotDuringSuccessfulPersistence() {
+        let old = Fixtures.carbon(13)
+        let replacement = Fixtures.macro(
+            id: old.id,
+            text: "new",
+            shortcut: .init(key: .function(14), modifiers: [])
+        )
+        let store = StoreSpy(loadResult: .success(.init(macros: [old])))
+        let carbon = CarbonSpy()
+        let coordinator = ShortcutCoordinator(
+            carbon: carbon,
+            hid: HIDSpy(permission: true, starts: true)
+        )
+        let queue = QueueSpy()
+        let app = AppController(
+            store: store,
+            shortcuts: coordinator,
+            permissions: PermissionSpy(),
+            queue: queue
+        )
+        app.start()
+        let existingID = carbon.registrations[0].id
+        app.draft = .init(macros: [replacement])
+        store.onSave = {
+            XCTAssertEqual(app.runtime.macros[0].text, old.text)
+            carbon.send(id: existingID)
+            XCTAssertEqual(queue.requests.map(\.text), [old.text])
+        }
+
+        app.save()
+        let replacementID = carbon.registrations[1].id
+        carbon.send(id: replacementID)
+
+        XCTAssertEqual(queue.requests.map(\.text), [old.text, replacement.text])
+        XCTAssertEqual(app.runtime.macros[0].text, replacement.text)
+    }
+
+    func testRealCoordinatorCancelsUnroutedProvisionalIDWhenPersistenceFails() {
+        let old = Fixtures.carbon(13)
+        let replacement = Fixtures.macro(
+            id: old.id,
+            text: "new",
+            shortcut: .init(key: .function(14), modifiers: [])
+        )
+        let store = StoreSpy(loadResult: .success(.init(macros: [old])))
+        let carbon = CarbonSpy()
+        let coordinator = ShortcutCoordinator(
+            carbon: carbon,
+            hid: HIDSpy(permission: true, starts: true)
+        )
+        let queue = QueueSpy()
+        let app = AppController(
+            store: store,
+            shortcuts: coordinator,
+            permissions: PermissionSpy(),
+            queue: queue
+        )
+        app.start()
+        let existingID = carbon.registrations[0].id
+        app.draft = .init(macros: [replacement])
+        store.failOnce(StoreError.io)
+        store.onSave = {
+            let provisionalID = carbon.registrations[1].id
+            carbon.send(id: existingID)
+            carbon.send(id: provisionalID)
+            XCTAssertEqual(queue.requests.map(\.text), [old.text])
+        }
+
+        app.save()
+        let provisionalID = carbon.registrations[1].id
+        carbon.send(id: existingID)
+        carbon.send(id: provisionalID)
+
+        XCTAssertEqual(queue.requests.map(\.text), [old.text, old.text])
+        XCTAssertEqual(carbon.unregisteredIDs, [provisionalID])
+        XCTAssertEqual(app.runtime.macros[0].text, old.text)
+        XCTAssertEqual(app.draft.macros[0].text, replacement.text)
+        XCTAssertNotNil(app.saveError)
+    }
+
+    func testSupersededCandidateAfterPersistenceDoesNotPublishRuntimeOrDraft() {
+        let old = AppSettings(macros: [])
+        let edited = AppSettings(macros: [Fixtures.carbon(13)])
+        let store = StoreSpy(loadResult: .success(old))
+        let carbon = CarbonSpy()
+        let coordinator = ShortcutCoordinator(
+            carbon: carbon,
+            hid: HIDSpy(permission: true, starts: true)
+        )
+        let app = AppController(
+            store: store,
+            shortcuts: coordinator,
+            permissions: PermissionSpy(),
+            queue: QueueSpy()
+        )
+        app.start()
+        app.draft = edited
+        store.onSave = {
+            let superseding = coordinator.prepareReplacement(
+                with: .init(macros: [Fixtures.carbon(14)])
+            )
+            coordinator.cancel(superseding)
+        }
+
+        app.save()
+
+        XCTAssertEqual(store.savedValues, [edited])
+        XCTAssertEqual(app.runtime, old)
+        XCTAssertEqual(app.draft, edited)
+        XCTAssertNotNil(app.saveError)
     }
 
     func testTriggerCopiesTextAndTrailingBeforeLaterSettingsReplacement() {

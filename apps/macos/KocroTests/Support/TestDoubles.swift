@@ -31,10 +31,18 @@ final class MemorySettingsFile: SettingsFile {
 enum Fixtures {
     static func macro(
         id: UUID = UUID(),
+        title: String = "",
         text: String,
         shortcut: ShortcutDefinition = .init(key: .function(13), modifiers: [])
     ) -> MacroDefinition {
-        .init(id: id, isEnabled: true, shortcut: shortcut, text: text, trailingKey: nil)
+        .init(
+            id: id,
+            title: title,
+            isEnabled: true,
+            shortcut: shortcut,
+            text: text,
+            trailingKey: nil
+        )
     }
 
     static func settings(text: String) -> AppSettings {
@@ -56,9 +64,11 @@ enum Fixtures {
 
 final class CarbonSpy: CarbonServing {
     var onRegistrationID: ((UInt32, ContinuousClock.Instant) -> Void)?
+    var onUnregisterID: ((UInt32) -> Void)?
     var failingRegistration: Int?
     private(set) var registrations: [(id: UInt32, shortcut: ShortcutDefinition)] = []
     private(set) var unregisterAllCount = 0
+    private(set) var unregisteredIDs: [UInt32] = []
     private(set) var lifecycleMainThreads: [Bool] = []
 
     init(failingRegistration: Int? = nil) {
@@ -78,6 +88,12 @@ final class CarbonSpy: CarbonServing {
         unregisterAllCount += 1
     }
 
+    func unregister(id: UInt32) {
+        lifecycleMainThreads.append(Thread.isMainThread)
+        unregisteredIDs.append(id)
+        onUnregisterID?(id)
+    }
+
     func send(id: UInt32) {
         onRegistrationID?(id, ContinuousClock.now)
     }
@@ -87,6 +103,8 @@ final class CarbonHotKeyAPISpy: CarbonHotKeyAPI {
     var registrationStatus: OSStatus = noErr
     var onUnregister: (() -> Void)?
     private(set) var options: [UInt32] = []
+    private(set) var registeredIDs: [UInt32] = []
+    private(set) var unregisteredReferences: [EventHotKeyRef] = []
 
     func register(
         keyCode: UInt32,
@@ -96,11 +114,15 @@ final class CarbonHotKeyAPISpy: CarbonHotKeyAPI {
         options: UInt32
     ) -> (OSStatus, EventHotKeyRef?) {
         self.options.append(options)
-        let reference = registrationStatus == noErr ? EventHotKeyRef(bitPattern: 1) : nil
+        registeredIDs.append(hotKeyID.id)
+        let reference = registrationStatus == noErr
+            ? EventHotKeyRef(bitPattern: Int(hotKeyID.id))
+            : nil
         return (registrationStatus, reference)
     }
 
     func unregister(_ hotKey: EventHotKeyRef) {
+        unregisteredReferences.append(hotKey)
         onUnregister?()
     }
 }
@@ -455,6 +477,10 @@ final class ShortcutSpy: ShortcutCoordinating, @unchecked Sendable {
     private var statesStorage: [UUID: RegistrationState]
     private var triggerStorage: ((UUID, ContinuousClock.Instant) -> Void)?
     private var replaceCallsStorage: [[MacroDefinition]] = []
+    var nextCandidateSettings: AppSettings?
+    private(set) var prepareCalls: [AppSettings] = []
+    private(set) var commitCount = 0
+    private(set) var cancelCount = 0
 
     init(states: [UUID: RegistrationState] = [:]) {
         statesStorage = states
@@ -470,23 +496,33 @@ final class ShortcutSpy: ShortcutCoordinating, @unchecked Sendable {
     }
     var replaceCalls: [[MacroDefinition]] { locked { replaceCallsStorage } }
 
-    func replace(
-        with macros: [MacroDefinition],
+    func prepareReplacement(
+        with settings: AppSettings
+    ) -> any ShortcutReplacementCandidate {
+        prepareCalls.append(settings)
+        let candidateSettings = nextCandidateSettings ?? settings
+        replaceCallsStorage.append(settings.macros)
+        let result = statesStorage.isEmpty
+            ? Dictionary(
+                uniqueKeysWithValues: candidateSettings.macros.filter(\.isEnabled).map {
+                    ($0.id, RegistrationState.registered)
+                }
+            )
+            : statesStorage
+        return ShortcutCandidateSpy(settings: candidateSettings, states: result)
+    }
+
+    func commit(
+        _ candidate: any ShortcutReplacementCandidate,
         installSnapshots: ([UUID: RegistrationState]) -> Void
-    ) -> [UUID: RegistrationState] {
-        let result = locked {
-            replaceCallsStorage.append(macros)
-            if statesStorage.isEmpty {
-                return Dictionary(
-                    uniqueKeysWithValues: macros.filter(\.isEnabled).map {
-                        ($0.id, RegistrationState.registered)
-                    }
-                )
-            }
-            return statesStorage
-        }
-        installSnapshots(result)
-        return result
+    ) -> [UUID: RegistrationState]? {
+        commitCount += 1
+        installSnapshots(candidate.states)
+        return candidate.states
+    }
+
+    func cancel(_ candidate: any ShortcutReplacementCandidate) {
+        cancelCount += 1
     }
 
     func shutdown() {}
@@ -501,6 +537,16 @@ final class ShortcutSpy: ShortcutCoordinating, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return body()
+    }
+}
+
+private final class ShortcutCandidateSpy: ShortcutReplacementCandidate {
+    let settings: AppSettings
+    let states: [UUID: RegistrationState]
+
+    init(settings: AppSettings, states: [UUID: RegistrationState]) {
+        self.settings = settings
+        self.states = states
     }
 }
 

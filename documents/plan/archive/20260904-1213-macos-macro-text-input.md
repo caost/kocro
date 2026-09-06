@@ -2,10 +2,10 @@
 type: plan
 title: Kocro macOS 매크로 텍스트 입력 구현 계획
 created: 2026-09-04
-updated: 2026-09-04
+updated: 2026-09-07
 related:
   - documents/spec/platform/macos-macro-text-input.md
-status: in-progress
+status: completed
 ---
 
 # Kocro macOS 매크로 텍스트 입력 구현 계획
@@ -31,10 +31,12 @@ status: in-progress
 | `apps/macos/Kocro/App/KocroApp.swift` | scene과 앱 수명 주기 |
 | `apps/macos/Kocro/App/AppController.swift` | 로드·저장·권한·등록·실행 상태 조정 |
 | `apps/macos/Kocro/Domain/MacroModels.swift` | UUID 매크로, shortcut, 후속 키, 설정 모델 |
+| `apps/macos/Kocro/Domain/MacKeyCodePolicy.swift` | 지원 키 판정과 사람이 읽는 키 이름 변환 |
 | `apps/macos/Kocro/Domain/SettingsValidator.swift` | UUID·길이·키 조합·중복 검증 |
 | `apps/macos/Kocro/Persistence/{SettingsStore,JSONSettingsStore}.swift` | 저장 경계와 원자적 JSON 구현 |
 | `apps/macos/Kocro/Shortcuts/{ShortcutCoordinator,CarbonHotKeySource,HIDFunctionKeySource}.swift` | Carbon/HID 등록·수신·해제 |
 | `apps/macos/Kocro/Input/{PermissionClient,EventBatchFactory,MacroExecutionQueue}.swift` | 권한, 전체 이벤트 선생성, FIFO 게시 |
+| `apps/macos/Kocro/Input/PostingLatencyRecorder.swift` | 게시 지연 표본과 p50·p95 계산 |
 | `apps/macos/Kocro/Features/MenuBar/MenuBarView.swift` | 우선순위 상태, 등록 수, 결과, 권한, 종료 |
 | `apps/macos/Kocro/Features/Settings/{SettingsView,KeyRecorder,LoginItemController}.swift` | 무제한 편집, 로컬 키 기록, 로그인 실행 |
 | `apps/macos/KocroTests/*.swift` | 시스템 경계와 수용 기준 XCTest |
@@ -48,6 +50,7 @@ status: in-progress
 - 로그와 화면 결과에는 UUID, shortcut, 오류 종류와 시각만 둔다. 매크로 문자열과 활성 앱 이름은 넣지 않는다.
 - builder는 브랜치를 변경하거나 커밋하지 않는다. conductor만 각 task 검증 뒤 stage 6에서 `wip(task-N): ...` checkpoint 커밋을 만들 수 있다. stage 9 승인 뒤 conductor가 checkpoint를 정리하고 전체 이슈 변경을 누락 없이 논리 단위 formal 커밋으로 다시 구성한다.
 - 각 task는 GREEN 검증 뒤 중복 제거와 이름 정리처럼 동작을 바꾸지 않는 refactor를 수행하고, 해당 task의 focused 테스트를 다시 통과시킨 뒤 checkpoint 후보로 넘긴다.
+- 완료 표시된 Task 1~10의 코드 블록은 최초 구현 당시의 이력이다. 현행 동작을 수정할 때는 현재 스펙과 저장소 코드를 기준으로 하며 해당 블록을 다시 적용하지 않는다.
 
 ### Task 1: Kocro Xcode 프로젝트와 메뉴 바 진입점
 
@@ -1020,24 +1023,471 @@ docs: record macOS macro verification
 
 각 formal 커밋은 production 코드와 대응 테스트를 함께 포함한다. 단일 generic 커밋으로 합치지 않는다.
 
+### Task 11: 편집 가능한 제목과 기존 JSON 마이그레이션
+
+**Files:**
+- Modify: `apps/macos/Kocro/Domain/MacroModels.swift`
+- Modify: `apps/macos/Kocro/Persistence/JSONSettingsStore.swift`
+- Modify: `apps/macos/Kocro/Features/Settings/SettingsView.swift`
+- Modify: `apps/macos/KocroTests/Support/TestDoubles.swift`
+- Modify: `apps/macos/KocroTests/JSONSettingsStoreTests.swift`
+- Modify: `apps/macos/KocroTests/SettingsValidatorTests.swift`
+- Modify: `apps/macos/KocroTests/ViewModelTests.swift`
+
+- [x] **Step 1: 제목 기본값·round-trip·기존 파일 마이그레이션 실패 테스트를 작성한다**
+
+`AppSettings.defaults`의 제목이 배열 순서대로 `매크로 1`~`매크로 12`인지, 새 항목 제목이 빈 문자열인지, 빈 제목이 유효하며 표시 제목만 `이름 없는 매크로`인지 검증한다. `JSONSettingsStoreTests`에는 title 키가 없는 두 항목의 JSON을 직접 만들고 UUID·순서·활성화 여부·shortcut·text·trailingKey가 그대로인 채 제목만 `매크로 1`, `매크로 2`로 보완되는 테스트를 추가한다. 이어 저장한 JSON에는 title 키가 생기는지 확인한다. title이 `null`, 숫자 또는 객체인 JSON은 각각 `StoreError.invalidFile`이어야 한다.
+
+```swift
+let migrated = try JSONSettingsStore(file: file, validator: .init()).load()
+XCTAssertEqual(migrated.macros.map(\.title), ["매크로 1", "매크로 2"])
+XCTAssertEqual(migrated.macros.map(\.id), [firstID, secondID])
+XCTAssertEqual(migrated.macros.map(\.text), ["첫 값", "둘째 값"])
+
+let unnamed = MacroDefinition.newDraft()
+XCTAssertEqual(unnamed.title, "")
+XCTAssertEqual(unnamed.displayTitle, "이름 없는 매크로")
+```
+
+- [x] **Step 2: RED를 확인한다**
+
+Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' -only-testing:KocroTests/JSONSettingsStoreTests -only-testing:KocroTests/SettingsValidatorTests -only-testing:KocroTests/ViewModelTests`
+
+Expected: `MacroDefinition`에 `title`, `displayTitle` 또는 `newDraft()`가 없어 compile failure가 발생하거나 legacy fixture decode가 실패하고 `** TEST FAILED **`가 출력된다.
+
+Evidence (2026-09-06): focused command는 exit 65와 `** TEST FAILED **`를 반환했고, `JSONSettingsStoreTests.swift:56`에서 저장된 title 배열 `[]`가 예상값 `["매크로 1", "매크로 2"]`와 다르다는 assertion failure를 확인했다.
+
+- [x] **Step 3: 제목 모델과 마이그레이션을 최소 구현한다**
+
+`MacroDefinition`에 `var title: String`을 추가하고 `displayTitle`은 빈 문자열일 때만 `이름 없는 매크로`를 반환한다. 기본 항목 생성은 순서 기반 제목을 넣고, `SettingsViewModel.add()`는 제목이 빈 새 draft를 추가한다. `Fixtures.macro`에는 기본 인자 `title: String = ""`를 추가해 기존 테스트의 의미를 유지한다.
+
+`JSONSettingsStore`의 decode 경계에 private `PersistedSettingsPayload`와 `PersistedMacroPayload`를 둔다. `PersistedMacroPayload.init(from:)`는 `container.contains(.title)`이 false일 때만 `.missing`을 기록하고, 키가 있으면 `decode(String.self, forKey:)`를 호출해 null과 비문자열을 거부한다. 배열을 `enumerated()`로 변환하면서 `.missing`만 `매크로 \(offset + 1)`로 보완한다. 저장은 현재 `AppSettings` encoder를 사용해 모든 항목의 title 키를 기록한다.
+
+```swift
+enum PersistedTitle {
+    case missing
+    case value(String)
+}
+
+let title: String
+switch payload.title {
+case .missing: title = "매크로 \(offset + 1)"
+case .value(let value): title = value
+}
+return MacroDefinition(
+    id: payload.id,
+    title: title,
+    isEnabled: payload.isEnabled,
+    shortcut: payload.shortcut,
+    text: payload.text,
+    trailingKey: payload.trailingKey
+)
+```
+
+`SettingsView`의 각 매크로 행에 `TextField("제목", text: $macro.title)`을 추가하고, 빈 제목의 행 제목이나 accessibility label에는 `macro.displayTitle`을 사용한다. 입력 문자열은 trim하거나 정규화하지 않는다.
+
+- [x] **Step 4: GREEN과 관련 suite를 확인한다**
+
+Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' -only-testing:KocroTests/JSONSettingsStoreTests -only-testing:KocroTests/SettingsValidatorTests -only-testing:KocroTests/ViewModelTests`
+
+Expected: `** TEST SUCCEEDED **`; title 키가 없는 파일만 순서 기반 제목으로 로드되고 null·비문자열 title은 전체 파일 오류가 되며 제목 편집은 draft에만 반영된다.
+
+Evidence (2026-09-06): 같은 focused 테스트와 `JSONSettingsStoreTests`, `SettingsValidatorTests`, `ViewModelTests` 관련 suite가 `** TEST SUCCEEDED **`로 통과했다.
+
+- [x] **Step 5: 동작을 바꾸지 않는 refactor와 재검증을 수행한다**
+
+중복된 legacy payload 변환과 제목 생성 코드를 정리하고 이름이 역할을 드러내는지 확인한다. 이후 Step 4와 같은 관련 suite를 다시 실행해 `** TEST SUCCEEDED **`를 확인한다.
+
+- [x] **Step 6: checkpoint 후보**
+
+builder는 커밋하지 않는다. conductor는 stage 6 검증 뒤 `wip(task-11): add macro titles and legacy migration`을 만들 수 있다.
+
+### Task 12: VIA와 비슷한 shortcut 토큰 입력
+
+**Files:**
+- Modify: `apps/macos/Kocro/Domain/MacroModels.swift`
+- Modify: `apps/macos/Kocro/Domain/MacKeyCodePolicy.swift`
+- Modify: `apps/macos/Kocro/Features/Settings/KeyRecorder.swift`
+- Modify: `apps/macos/Kocro/Features/Settings/SettingsView.swift`
+- Modify: `apps/macos/KocroTests/ViewModelTests.swift`
+
+- [x] **Step 1: 입력 모드별 키 처리와 토큰 표시 실패 테스트를 작성한다**
+
+테스트 가능한 `KeyRecorderMode`와 `KeyRecorderDecision` 경계로 다음 표를 고정한다.
+
+| 입력 | shortcut 모드 | trailing 모드 |
+| --- | --- | --- |
+| Delete(117), Backspace(51) | `.clear` | 해당 키를 `.record(...)` |
+| Escape(53) | `.resignFocus` | Escape를 `.record(...)` |
+| key repeat | `.keepValue` | `.keepValue` |
+| 보조 키만·지원하지 않는 키 | `.keepValue` | `.keepValue` |
+| 유효한 새 조합 | 기존 값 전체를 바꾸는 `.record(...)` | 기존 값을 바꾸는 `.record(...)` |
+
+`ShortcutDefinition.tokens`은 보조 키를 Control, Option, Shift, Command 순으로 각각 분리하고 마지막에 사람이 알아볼 수 있는 기준 키 이름을 둔다. 문자·숫자·기호·탐색 키와 keypad 키에 `Key 0` 같은 숫자 표기가 남지 않도록 대표 key code(A, 1, -, Return, Left Arrow, Keypad 0)를 검증한다.
+
+Delete·Backspace의 `.clear`와 Escape의 `.resignFocus`는 Command, Control, Option, Shift가 함께 눌려도 동일하게 적용하는 case를 포함한다. 전역 단축키에서는 이 세 키를 기준 키로 기록하지 않으며 trailing 모드에서만 기록한다.
+
+```swift
+XCTAssertEqual(shortcut.tokens, ["⌃ Control", "⌥ Option", "A"])
+XCTAssertEqual(KeyRecorderTranslator.decision(keyCode: 51, modifiers: [], isRepeat: false, mode: .shortcut), .clear)
+XCTAssertEqual(KeyRecorderTranslator.decision(keyCode: 53, modifiers: [], isRepeat: false, mode: .shortcut), .resignFocus)
+XCTAssertEqual(
+    KeyRecorderTranslator.decision(
+        keyCode: 51,
+        modifiers: [],
+        isRepeat: false,
+        mode: .trailing
+    ),
+    .record(.init(key: .keyCode(51), modifiers: []))
+)
+```
+
+- [x] **Step 2: RED를 확인한다**
+
+Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' -only-testing:KocroTests/ViewModelTests`
+
+Expected: 토큰과 mode/decision API가 없어 compile failure가 발생하고 `** TEST FAILED **`가 출력된다.
+
+Evidence (2026-09-06): `ViewModelTests`에 실패 테스트를 먼저 추가한 뒤 같은 명령이 종료 코드 65와 `** TEST FAILED **`를 반환했다. 컴파일러는 `ShortcutDefinition.tokens`, `KeyRecorderMode`, `KeyRecorderTranslator.decision`이 없다고 보고했다.
+
+- [x] **Step 3: pure key decision과 토큰 렌더링을 최소 구현한다**
+
+`KeyRecorderTranslator.decision(...)`에서 repeat를 먼저 무시하고 mode별 Escape/Delete/Backspace를 처리한 뒤 기존 shortcut/trailing validation을 재사용한다. `RecorderView.keyDown`은 `.clear`에서 `.empty`를 전달하고, `.resignFocus`에서 `window?.makeFirstResponder(nil)`만 호출하며, `.keepValue`에서는 binding과 focus를 유지한다. trailing 모드에는 Delete·Backspace·Escape를 허용하되 `KeyRecorder` 옆의 `지우기` 버튼만 nil을 설정한다.
+
+```swift
+enum KeyRecorderMode { case shortcut, trailing }
+enum KeyRecorderDecision: Equatable {
+    case keepValue, clear, resignFocus
+    case record(ShortcutDefinition)
+}
+```
+
+`ShortcutDefinition.tokens`와 `MacKeyCodePolicy.displayName(for:)`을 추가한다. `RecorderView.draw(_:)`는 각 토큰을 padding과 둥근 테두리가 있는 별도 badge로 왼쪽부터 그리며, 토큰이 없으면 prompt를 그린다. F21~F24 picker는 같은 입력 영역 안에 유지하고 선택 시 shortcut 전체를 `.function(number), []`로 교체한다.
+
+- [x] **Step 4: GREEN과 관련 suite를 확인한다**
+
+Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' -only-testing:KocroTests/ViewModelTests -only-testing:KocroTests/SettingsValidatorTests -only-testing:KocroTests/EventBatchFactoryTests`
+
+Expected: `** TEST SUCCEEDED **`; 두 모드의 Delete·Backspace·Escape 동작이 분리되고 모든 지원 키가 사람이 알아볼 수 있는 토큰으로 표시된다.
+
+Evidence (2026-09-06): `ViewModelTests` 단독 실행과 `ViewModelTests`, `SettingsValidatorTests`, `EventBatchFactoryTests` 관련 suite가 모두 종료 코드 0과 `** TEST SUCCEEDED **`로 통과했다. conductor도 같은 관련 suite를 재실행해 통과를 확인했다.
+
+- [x] **Step 5: 동작을 바꾸지 않는 refactor와 재검증을 수행한다**
+
+키 이름 표와 입력 mode 분기에서 중복을 제거하고 token layout 이름을 정리한다. 이후 Step 4와 같은 관련 suite를 다시 실행해 `** TEST SUCCEEDED **`를 확인한다.
+
+Evidence (2026-09-07): 코드 품질 리뷰에서 확인한 VoiceOver role/value/help, 최장 토큰 조합 잘림, 포커스 표시 문제를 실패 테스트로 재현했다. `RecorderView` 접근성 동작, 측정 기반 intrinsic width, first responder 포커스 링을 구현하고 trailing 변환 중복을 정리한 뒤 관련 suite와 전체 테스트가 `** TEST SUCCEEDED **`로 통과했다.
+
+후속 재리뷰에서 key-view 이동과 외부 binding 변경 알림 누락을 확인했다. 실제 `NSWindow` key-view loop와 접근성 알림 spy로 RED를 재현한 뒤, 기록 완료 시 다음 컨트롤로 이동하고 token이 실제로 바뀔 때만 `.valueChanged`를 게시하도록 수정했다. 관련 suite와 전체 테스트를 다시 실행해 `** TEST SUCCEEDED **`를 확인했다.
+
+최종 스펙 리뷰에서 trailing F1~F20이 저장 모델에서 화면 모델로 복원될 때 `Key 90`처럼 표시되는 round-trip 문제를 확인했다. F1과 F20 실패 테스트를 추가하고 공통 `ShortcutDefinition.init(trailingKey:)` 변환을 적용한 뒤 관련 suite와 전체 테스트를 다시 통과했다.
+
+코드 품질 종료 리뷰에서 Command key equivalent가 메뉴 액션으로 전달되는 문제와 반복 행의 접근성 라벨이 같은 문제를 확인했다. 실제 `NSWindow`·`NSMenu` dispatch 테스트와 다중 행 접근성 테스트를 RED로 추가하고, 공통 event handler 및 제목·UUID·입력 종류를 포함한 접근성 라벨을 구현했다. 관련 suite와 전체 테스트를 다시 통과했다.
+
+후속 종료 리뷰에서 key repeat가 key-up 전에 메뉴로 전달될 수 있는 문제를 확인했다. initial down·repeat·key-up 시퀀스와 같은 UUID prefix를 가진 행을 실패 테스트로 추가하고, key equivalent의 matching key-up까지 gesture를 유지하며 full UUID를 접근성 라벨에 사용하도록 수정했다. 관련 suite, 전체 테스트, Release build가 통과했다.
+
+conductor 셀프 리뷰에서 보조 키를 먼저 떼면 key-up의 modifier가 달라질 수 있는 경계를 확인했다. modifier 없는 matching base-key key-up과 unrelated key-up 테스트를 추가하고, release는 key code로 판정하도록 수정한 뒤 관련 suite와 전체 테스트를 다시 통과했다.
+
+마지막 코드 품질 리뷰에서 key-up 전에 포커스·key window를 잃는 경우와 pending 중 다른 key equivalent가 메뉴로 전달되는 경우를 확인했다. 재포커스와 `Cmd+Q` 메뉴 테스트를 RED로 추가하고, responder·window 수명 주기에서 pending 상태를 정리하며 pending 동안 모든 key equivalent를 소비하도록 수정했다. 관련 suite와 전체 테스트를 다시 통과했다.
+
+- [x] **Step 6: checkpoint 후보**
+
+builder는 커밋하지 않는다. conductor는 stage 6 검증 뒤 `wip(task-12): add shortcut token editor`를 만들 수 있다.
+
+### Task 13: Carbon 등록 준비·커밋·취소 수명 주기
+
+**Files:**
+- Modify: `apps/macos/Kocro/Shortcuts/CarbonHotKeySource.swift`
+- Modify: `apps/macos/Kocro/Shortcuts/ShortcutCoordinator.swift`
+- Modify: `apps/macos/KocroTests/Support/TestDoubles.swift`
+- Modify: `apps/macos/KocroTests/CarbonHotKeySourceTests.swift`
+- Modify: `apps/macos/KocroTests/ShortcutCoordinatorTests.swift`
+
+- [x] **Step 1: identity 재사용과 staged routing 실패 테스트를 작성한다**
+
+Carbon source가 registration ID별 reference를 해제할 수 있는지 검증한다. coordinator 테스트는 기존 F13을 다른 UUID로 이전하거나 F13/F14를 두 항목 사이에서 교환할 때 같은 `ShortcutRegistrationIdentity`의 OS 등록과 registration ID를 재사용하는지 확인한다. 새 F15 후보 ID는 prepare 중 callback이 와도 전달하지 않고 commit 뒤 새 UUID로 전달해야 한다. cancel은 새 F15만 해제하고 기존 F13/F14 route와 등록을 그대로 유지해야 한다. 지원하지 않는 modifier bit가 있는 shortcut은 identity 생성 실패로 거부한다.
+
+```swift
+let candidate = coordinator.prepareReplacement(with: [newOwnerOfF13, addedF15])
+let candidateID = try XCTUnwrap(carbon.registeredIDs.last)
+carbon.send(id: candidateID)
+XCTAssertTrue(triggered.isEmpty)
+coordinator.cancel(candidate)
+carbon.send(id: existingF13ID)
+XCTAssertEqual(triggered, [oldOwnerOfF13.id])
+```
+
+- [x] **Step 2: RED를 확인한다**
+
+Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' -only-testing:KocroTests/CarbonHotKeySourceTests -only-testing:KocroTests/ShortcutCoordinatorTests`
+
+Expected: `prepareReplacement`, `commit`, `cancel`과 개별 unregister API가 없어 compile failure가 발생하고 `** TEST FAILED **`가 출력된다.
+
+Evidence (2026-09-07): Carbon·coordinator 실패 테스트를 먼저 추가한 뒤 지정 명령이 종료 코드 65와 `** TEST FAILED **`를 반환했다. `CarbonHotKeySource.unregister(id:)`와 staged replacement API가 없어 컴파일에 실패했다.
+
+- [x] **Step 3: Carbon resource와 candidate를 최소 구현한다**
+
+`ShortcutRegistrationIdentity`는 Carbon virtual key code와 `ModifierSet.supported` 안의 비트만 허용하는 값으로 확정하고 UUID를 넣지 않는다. `.letter("A")`, `.letter("a")`, `.keyCode(0)`처럼 같은 Carbon key code와 modifier로 변환되는 모델은 같은 identity가 된다.
+
+`CarbonServing`을 `register(id:shortcut:) -> Bool`, `unregister(id:)`, `unregisterAll()`로 확장하고 `CarbonHotKeyResources`는 `[UInt32: EventHotKeyRef]`를 보관한다. 중복 ID 등록은 실패시키며 개별 해제는 해당 reference에만 `UnregisterEventHotKey`를 호출한다.
+
+`ShortcutCoordinator`에 opaque `PreparedShortcutReplacement`를 추가한다. prepare는 현재 `[ShortcutRegistrationIdentity: registrationID]`를 조회해 최종 후보에도 있는 identity를 재사용하고, 없는 identity에만 증가하는 새 ID를 등록한다. 새 ID는 candidate에만 보관하고 current `ShortcutIngress` route에는 넣지 않는다. Carbon 충돌 항목은 state를 `.registrationFailed`로 기록하고 candidate 설정에서 `isEnabled = false`로 바꾼다. commit은 snapshot 설치와 ingress route 교체를 한 임계 구역에서 끝낸 다음 사라진 기존 ID를 해제한다. cancel은 candidate에서 새로 등록한 ID만 해제한다. HID 권한·start 상태는 저장 값을 바꾸지 않으며 commit 시 기존 generation을 교체한다.
+
+```swift
+struct PreparedShortcutReplacement {
+    let settings: AppSettings
+    let states: [UUID: RegistrationState]
+    fileprivate let carbonRoutes: [UInt32: UUID]
+    fileprivate let newlyRegisteredIDs: Set<UInt32>
+    fileprivate let reusedIDs: Set<UInt32>
+}
+```
+
+- [x] **Step 4: GREEN과 관련 suite를 확인한다**
+
+Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' -only-testing:KocroTests/CarbonHotKeySourceTests -only-testing:KocroTests/ShortcutCoordinatorTests -only-testing:KocroTests/SettingsValidatorTests`
+
+Expected: `** TEST SUCCEEDED **`; identity가 같은 등록은 재사용되고 prepare 중 새 ID는 unrouted이며 cancel 뒤 기존 route와 등록이 유지된다.
+
+Evidence (2026-09-07): `CarbonHotKeySourceTests`, `ShortcutCoordinatorTests`, `SettingsValidatorTests`가 종료 코드 0과 `** TEST SUCCEEDED **`로 통과했다. conductor도 같은 관련 suite를 재실행해 통과를 확인했다.
+
+- [x] **Step 5: 동작을 바꾸지 않는 refactor와 재검증을 수행한다**
+
+candidate의 신규·재사용 registration ID 집합과 ingress route 교체 책임이 중복되지 않도록 정리한다. 이후 Step 4와 같은 관련 suite를 다시 실행해 `** TEST SUCCEEDED **`를 확인한다.
+
+Evidence (2026-09-07): 코드 품질 리뷰에서 candidate의 commit/cancel 순서 역전, 교차 coordinator 사용, 겹친 prepare, 미종료 token이 등록을 잘못 해제하거나 남기는 문제를 확인했다. coordinator 소유의 단일 사용 transaction과 pending record를 구현하고 각 오용 경로를 RED 테스트로 고정했다. 수정 뒤 관련 suite와 전체 테스트가 `** TEST SUCCEEDED **`로 통과했다.
+
+- [x] **Step 6: checkpoint 후보**
+
+builder는 커밋하지 않는다. conductor는 stage 6 검증 뒤 `wip(task-13): stage Carbon shortcut replacement`를 만들 수 있다.
+
+### Task 14: 충돌 자동 비활성화와 저장 우선 커밋
+
+**Files:**
+- Modify: `apps/macos/Kocro/App/AppController.swift`
+- Modify: `apps/macos/Kocro/Shortcuts/ShortcutCoordinator.swift`
+- Modify: `apps/macos/Kocro/Features/Settings/SettingsView.swift`
+- Modify: `apps/macos/KocroTests/Support/TestDoubles.swift`
+- Modify: `apps/macos/KocroTests/AppControllerTests.swift`
+- Modify: `apps/macos/KocroTests/MacroPipelineIntegrationTests.swift`
+- Modify: `apps/macos/KocroTests/ViewModelTests.swift`
+
+- [x] **Step 1: 충돌 후보의 저장 성공·실패 순서 테스트를 작성한다**
+
+두 시나리오를 별도 테스트로 만든다. 첫째, F14 등록이 충돌하면 candidate의 해당 항목만 disabled이고 F13은 enabled인 값이 store에 저장된 뒤 runtime·snapshot·route가 commit되며, 항목 오류에는 충돌 안내가 남는다. 둘째, 같은 candidate 저장이 실패하면 `cancel`이 호출되고 runtime, draft의 사용자 편집, execution snapshot, 기존 registration ID route가 저장 전 값 그대로인지 확인한다. `StoreSpy.onSave` 안에서는 아직 기존 runtime과 route가 실행되는지도 검증한다. 다음 저장에서는 이전 충돌 안내가 새 결과로 교체되어야 한다.
+
+```swift
+app.save()
+XCTAssertEqual(store.savedValues.last?.macros.map(\.isEnabled), [true, false])
+XCTAssertEqual(app.runtime, store.savedValues.last)
+XCTAssertEqual(app.registration[conflicted.id], .registrationFailed)
+
+store.failOnce(StoreError.io)
+app.save()
+XCTAssertEqual(shortcuts.cancelCount, 1)
+XCTAssertEqual(app.runtime, old)
+XCTAssertEqual(app.draft, editedDraft)
+```
+
+- [x] **Step 2: RED를 확인한다**
+
+Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' -only-testing:KocroTests/AppControllerTests -only-testing:KocroTests/MacroPipelineIntegrationTests -only-testing:KocroTests/ViewModelTests`
+
+Expected: 현재 `save()`가 원본 draft를 먼저 저장하고 나서 등록을 전면 교체하므로 충돌 disabled 값·prepare 취소·기존 registration 유지 assertion이 실패하며 `** TEST FAILED **`가 출력된다.
+
+Evidence (2026-09-07): 저장 성공·실패 순서 테스트를 먼저 추가한 뒤 지정 명령이 종료 코드 65와 `** TEST FAILED **`를 반환했다. 원본 draft 저장, cancel 미호출, 충돌 비활성화 값 미영속화를 각각 재현했다.
+
+- [x] **Step 3: AppController 저장 트랜잭션을 최소 구현한다**
+
+`ShortcutCoordinating` 경계를 `prepareReplacement`, `commit`, `cancel`, `shutdown`으로 바꾼다. `AppController.save()`은 validator를 통과한 draft로 candidate를 준비하고, `candidate.settings`를 원자 저장한 뒤에만 runtime과 draft를 그 값으로 바꾸고 commit한다. 저장 오류에서는 candidate를 cancel하고 runtime·registration·snapshot을 건드리지 않으며 사용자가 편집한 draft는 유지한다. load 성공과 권한 refresh도 같은 coordinator API를 사용하되 이미 영속화된 runtime은 즉시 prepare/commit하고 파일을 다시 저장하지 않는다.
+
+```swift
+let candidate = shortcuts.prepareReplacement(with: draft)
+do {
+    try store.save(candidate.settings)
+} catch {
+    shortcuts.cancel(candidate)
+    saveError = error
+    return
+}
+runtime = candidate.settings
+draft = candidate.settings
+registration = shortcuts.commit(candidate) { [snapshots] states in
+    snapshots.replace(candidate.settings.macros, registration: states)
+}
+```
+
+충돌 안내용 `.registrationFailed`는 해당 저장 결과의 registration map에 보존한다. `SettingsViewModel.synchronizeStatus`는 dirty draft를 덮어쓰지 않고 이 map만 갱신하며, 다음 저장 결과를 받으면 map 전체를 새 값으로 교체한다.
+
+- [x] **Step 4: GREEN과 관련 suite를 확인한다**
+
+Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' -only-testing:KocroTests/AppControllerTests -only-testing:KocroTests/MacroPipelineIntegrationTests -only-testing:KocroTests/ShortcutCoordinatorTests -only-testing:KocroTests/ViewModelTests`
+
+Expected: `** TEST SUCCEEDED **`; persistence가 ownership commit보다 먼저 일어나고 실패 시 기존 실행 설정·등록·snapshot과 편집 draft가 유지된다.
+
+Evidence (2026-09-07): `AppControllerTests`, `MacroPipelineIntegrationTests`, `ShortcutCoordinatorTests`, `ViewModelTests`가 종료 코드 0과 `** TEST SUCCEEDED **`로 통과했다. conductor도 같은 관련 suite를 재실행해 통과를 확인했다.
+
+- [x] **Step 5: 동작을 바꾸지 않는 refactor와 재검증을 수행한다**
+
+저장 성공·실패 분기의 공통 상태 갱신을 정리하되 persistence-before-commit 순서는 유지한다. 이후 Step 4와 같은 관련 suite를 다시 실행해 `** TEST SUCCEEDED **`를 확인한다.
+
+Evidence (2026-09-07): 코드 품질 리뷰에서 load 충돌이 저장 없이 runtime·draft를 비활성화하는 문제와 stale candidate 실패가 드러나지 않는 문제를 확인했다. 실제 `ShortcutCoordinator`·`CarbonSpy`를 사용한 시작 충돌 재시도, 저장 중 old route 실행, provisional ID cancel 테스트를 RED로 추가했다. load·refresh는 영속 설정을 유지하고 `commit`은 optional 실패를 반환하도록 수정한 뒤 관련 suite와 전체 테스트가 `** TEST SUCCEEDED **`로 통과했다.
+
+- [x] **Step 6: checkpoint 후보**
+
+builder는 커밋하지 않는다. conductor는 stage 6 검증 뒤 `wip(task-14): commit shortcut conflicts after persistence`를 만들 수 있다.
+
+### Task 15: 일반 설정과 메뉴 바 컨텍스트 액션·About
+
+**Files:**
+- Modify: `apps/macos/Kocro/Features/Settings/SettingsView.swift`
+- Modify: `apps/macos/Kocro/Features/MenuBar/MenuBarView.swift`
+- Modify: `apps/macos/Kocro/App/KocroApp.swift`
+- Modify: `apps/macos/KocroTests/ViewModelTests.swift`
+- Modify: `apps/macos/KocroTests/LoginItemControllerTests.swift`
+
+- [x] **Step 1: 매크로/일반 영역과 앱 액션 wiring 실패 테스트를 작성한다**
+
+`SettingsSection.macros/general` 선택 상태와 General view model이 login 상태·오류, Accessibility 상태, 조건부 Input Monitoring 상태와 각 권한 액션을 노출하는지 검증한다. 메뉴 action을 closure로 주입해 `설정…`이 설정 창 열기, `Kocro 정보`가 About 열기, `종료`가 terminate를 각각 한 번 호출하는지 확인한다. login 토글은 메뉴 바에서 제거하고 General 영역의 `로그인 시 실행`만 기존 `LoginItemController.setEnabledReportingError`에 연결한다.
+
+```swift
+let actions = AppMenuActions(
+    openSettings: { settingsOpenCount += 1 },
+    openAbout: { aboutCount += 1 },
+    terminate: { terminateCount += 1 }
+)
+actions.openAbout()
+XCTAssertEqual(aboutCount, 1)
+```
+
+- [x] **Step 2: RED를 확인한다**
+
+Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' -only-testing:KocroTests/ViewModelTests -only-testing:KocroTests/LoginItemControllerTests`
+
+Expected: `SettingsSection`, General 설정 모델 또는 `AppMenuActions`가 없어 compile failure가 발생하고 `** TEST FAILED **`가 출력된다.
+
+Evidence (2026-09-07): `ViewModelTests`와 `LoginItemControllerTests`에 설정 영역 선택, 조건부 Input Monitoring, 권한 액션, login 오류 경로, 메뉴 액션 호출 테스트를 먼저 추가했다. `GeneralSettingsViewModel`이 없는 상태에서 compile failure와 `** TEST FAILED **`를 확인했다.
+
+- [x] **Step 3: 설정 영역과 표준 About 액션을 최소 구현한다**
+
+`SettingsView`는 macOS 13에서 지원하는 `TabView`의 `매크로`와 `일반` 두 탭으로 나눈다. 기존 목록·저장·보안 안내는 매크로 탭에 둔다. 일반 탭은 login toggle과 오류, Accessibility 상태·권한 안내·설정 열기, F21~F24가 runtime 또는 draft에서 필요할 때의 Input Monitoring 상태·권한 요청·설정 열기를 표시한다. `SettingsView`에 기존 `SettingsViewModel`, `LoginItemController`, `AppController`를 주입하고 기존 permission 메서드를 재사용한다.
+
+메뉴 바 컨텍스트 메뉴는 상태·등록 수·마지막 결과와 조건부 권한 안내 뒤에 `설정…`, `Kocro 정보`, `종료`를 둔다. `KocroApp`에서 About closure를 `NSApp.orderFrontStandardAboutPanel(nil)`에 연결한다. 표준 패널의 표시 이름·버전·빌드·아이콘은 bundle의 기존 metadata를 사용한다.
+
+```swift
+struct AppMenuActions {
+    let openSettings: () -> Void
+    let openAbout: () -> Void
+    let terminate: () -> Void
+}
+```
+
+- [x] **Step 4: GREEN과 관련 suite를 확인한다**
+
+Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' -only-testing:KocroTests/ViewModelTests -only-testing:KocroTests/LoginItemControllerTests -only-testing:KocroTests/PermissionClientTests && xcodebuild build -project apps/macos/Kocro.xcodeproj -scheme Kocro -configuration Debug CODE_SIGNING_ALLOWED=NO`
+
+Expected: focused·관련 테스트와 Debug build가 성공하고, 권한·login 제어는 일반 탭에 있으며 메뉴 액션은 올바른 AppKit 동작에 연결된다.
+
+Evidence (2026-09-07): focused·관련 테스트가 `** TEST SUCCEEDED **`로 통과했고 `CODE_SIGNING_ALLOWED=NO` Debug build가 `** BUILD SUCCEEDED **`로 완료됐다.
+
+- [x] **Step 5: 동작을 바꾸지 않는 refactor와 재검증을 수행한다**
+
+매크로·일반 탭 구성과 메뉴 action wiring의 중복을 정리하고 accessibility label을 점검한다. 이후 Step 4와 같은 관련 suite와 Debug build를 다시 실행해 성공을 확인한다.
+
+Evidence (2026-09-07): 스펙 리뷰에서 runtime에는 HID 단축키가 없고 draft에만 F21~F24가 있을 때 Input Monitoring 상태가 갱신되지 않는 문제를 확인했다. draft 전용 HID 권한 갱신 테스트를 RED로 추가하고 일반 탭 표시 시 runtime과 draft를 함께 기준으로 권한 상태를 조회하도록 수정했다. 재리뷰에서 앱 활성화와 메뉴 표시 시 runtime 기준 갱신이 이 상태를 다시 초기화하는 문제를 확인해, 두 경로 모두 draft를 포함하고 기존 runtime shortcut 재조정을 유지하는 테스트와 구현을 추가했다. 메뉴 바 권한 액션은 저장된 runtime HID 필요 여부로 제한했다. 실제 앱 검증에서 `showSettingsWindow:` selector가 SwiftUI 설정 창을 열지 못하는 문제를 재현해, macOS 14 이상은 `openSettings`, macOS 13은 `showPreferencesWindow:`를 쓰도록 실패 테스트부터 수정했다. 관련 suite와 Debug·Release build가 다시 성공했고 메뉴 바 `설정…`으로 설정 창이 열리는 것을 확인했다.
+
+- [x] **Step 6: checkpoint 후보**
+
+builder는 커밋하지 않는다. conductor는 stage 6 검증 뒤 `wip(task-15): organize General settings and About actions`를 만들 수 있다.
+
+### Task 16: issue #6 최종 자동·실제 앱 검증
+
+이 task는 Task 11~15와 stage 8 리뷰 수정이 모두 끝난 뒤 conductor context에서 순서대로 실행한다. builder나 병렬 agent에 실제 앱 조작을 맡기지 않으며, 앞 단계가 실패하면 다음 단계로 진행하지 않는다.
+
+**Files:**
+- Modify: `documents/reference/macos-macro-text-input-verification.md`
+- Modify: `documents/reference/README.md`
+
+- [x] **Step 1: 전체 XCTest와 Release build를 실행한다**
+
+Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' && xcodebuild build -project apps/macos/Kocro.xcodeproj -scheme Kocro -configuration Release -derivedDataPath apps/macos/build CODE_SIGNING_ALLOWED=NO`
+
+Expected: `** TEST SUCCEEDED **`, `** BUILD SUCCEEDED **`; title migration, token 입력, registration identity 재사용, staged cancel/commit, 충돌 disabled 저장, General 설정과 menu action 테스트를 포함한 전체 suite가 통과한다.
+
+Evidence (2026-09-07): 현재 작업 트리에서 전체 XCTest 148개가 실패 없이 통과했고 unsigned Release build가 성공했다. 실제 앱 검증용 Release 앱은 `Kocro Local Development` 인증서와 Hardened Runtime으로 서명했으며 `codesign --verify --strict`를 통과했다.
+
+- [x] **Step 2: 금지 API·dependency·배포 target을 확인한다**
+
+Run: `! rg -n 'CGEventTap|addGlobalMonitorForEvents|NSPasteboard|Process\(|NSTask|URLSession|F2[5-9]|F3[0-5]' apps/macos/Kocro && ! rg -n 'XCRemoteSwiftPackageReference|XCSwiftPackageProductDependency' apps/macos/Kocro.xcodeproj/project.pbxproj && xcodebuild -showBuildSettings -project apps/macos/Kocro.xcodeproj -scheme Kocro -configuration Release | rg 'PRODUCT_BUNDLE_IDENTIFIER = com.caost.Kocro|MACOSX_DEPLOYMENT_TARGET = 13.0'`
+
+Expected: 앞의 두 검색은 exit 0과 출력 없음, build setting 검색은 bundle identifier와 macOS 13.0을 출력한다.
+
+Evidence (2026-09-07): 금지 API와 F25~F35, Xcode remote package dependency 검색 결과는 0건이었다. build setting은 `PRODUCT_BUNDLE_IDENTIFIER = com.caost.Kocro`, `MACOSX_DEPLOYMENT_TARGET = 13.0`을 출력했다.
+
+- [x] **Step 3: 실제 설정·입력 UI를 순서대로 확인한다**
+
+Release 앱 하나만 실행한다. 기존 title 키 없는 설정 복사본으로 시작해 제목이 순서대로 보완되고 다른 필드와 UUID가 유지되는지 확인한 뒤 저장해 title 키가 기록되는지 확인한다. 제목 편집·빈 제목의 `이름 없는 매크로`, 추가·삭제·정렬을 확인한다. shortcut 입력에서 modifier와 기준 키가 개별 토큰으로 보이고 새 입력이 전체를 교체하며 Delete·Backspace는 비우고 Escape는 focus만 해제하는지 확인한다. trailing 사용자 지정 입력에서는 세 키가 기록되고 별도 `지우기`가 값을 비우는지 확인한다. F21~F24 picker 선택이 기존 토큰 전체를 교체하는지도 확인한다.
+
+Expected: spec의 데이터 모델·설정 저장·화면 동작과 일치하고 저장 전 편집은 실행 설정에 영향을 주지 않는다.
+
+Evidence (2026-09-07): legacy title 보완·저장, UUID와 다른 필드 유지, 제목을 `기존 제목`에서 `편집한 제목`으로 직접 편집, 빈 제목 표시, 추가·삭제·드래그 정렬, shortcut 교체·Escape·Delete·Backspace, 후속 키 세 토큰·지우기, F21 picker 전체 교체를 서명된 Release 앱에서 확인했다. Backspace key code 51을 입력했을 때 shortcut 접근성 값은 `F13`에서 `설정 안 됨`으로 바뀌었다. 저장된 F13 매크로의 텍스트를 설정 화면에서 `저장하지 않은 텍스트`로 바꾸고 저장하지 않은 채 F13을 실행했을 때 TextEdit에는 기존 실행 설정인 `저장된 텍스트`가 입력돼, 저장 전 편집이 실행 설정에 영향을 주지 않는 것도 확인했다.
+
+- [ ] **Step 4: 실제 충돌·General·메뉴 액션을 순서대로 확인한다**
+
+등록 가능한 Carbon shortcut과 다른 앱/macOS가 사용하는 shortcut을 함께 저장해 충돌 항목만 disabled로 저장되고 정상 항목은 계속 실행되는지 확인한다. 저장 실패 fixture의 deterministic XCTest 결과와 저장 성공 뒤 ownership commit 순서를 검증 문서에 기록하고, 실제 파일 실패를 만들기 위해 사용자 설정 파일 권한을 변경하지 않는다. 이어 일반 탭에서 login toggle과 Accessibility·조건부 Input Monitoring 제어를 확인한다. 메뉴 바의 `설정…`은 설정 창을, `Kocro 정보`는 아이콘·표시 이름·버전·빌드가 있는 표준 About 패널을 열고 `종료`는 앱을 종료해야 한다.
+
+Expected: criterion 13의 실제 Carbon 충돌과 criterion 14의 설정·메뉴 동작이 확인된다.
+
+Evidence (2026-09-07): 일반 탭의 login·Accessibility와 draft F21 조건부 Input Monitoring, 메뉴 바 설정 창, 표준 About의 아이콘·이름·버전·빌드, 종료를 확인했다. 저장된 F21 설정은 Input Monitoring이 허용된 환경에서 `준비됨`과 등록 1개를 표시해 monitor 시작까지 확인했다. Carbon 중복 등록은 macOS가 허용하고 실제 등록 실패를 유발할 예약 shortcut을 확보하지 못해 실제 충돌은 미판정이다. 로컬 개발 빌드의 login 항목도 `notFound`라 정식 배포 검증이 필요하다. 저장 순서와 rollback은 `testCarbonCollisionPersistsDisabledCandidateBeforeCommittingOwnership`, `testCandidateSaveFailureCancelsOnceAndPreservesRuntimeRoutesSnapshotAndDraft`로 확인했다.
+
+- [ ] **Step 5: 기존 실제 입력·권한·성능 검증을 다시 실행하고 기록한다**
+
+Task 10 Step 5의 TextEdit/Safari 또는 Chromium/Terminal/VS Code, Unicode·후속 키·FIFO, 권한 철회, HID 비독점, 종료 해제, login 항목 검증과 Release 100회 latency 측정을 실행한다. `documents/reference/macos-macro-text-input-verification.md`의 canonical frontmatter `updated`를 검증 실행일로 바꾸고 환경, raw 100 samples, p50/p95, 각 결과와 자동 테스트 근거를 기록한다. 새 문서가 생긴 경우에만 `documents/reference/README.md` 링크를 추가하고 기존 링크는 중복시키지 않는다.
+
+Run: `test "$(jq '.samples | length' "$HOME/Library/Application Support/com.caost.Kocro/posting-latency.json")" -eq 100 && jq '{p50,p95}' "$HOME/Library/Application Support/com.caost.Kocro/posting-latency.json" && ! rg -n 'TODO|TBD|실행 후 기록' documents/reference/macos-macro-text-input-verification.md`
+
+Expected: exit 0, 숫자 p50/p95와 정확히 100개 sample이 실제 기록과 일치하고 미작성 placeholder가 없다.
+
+Evidence (2026-09-07): TextEdit와 Chrome에서 한글·영문·악센트 문자·이모지 입력을 확인했다. 200ms 간격 100회 Release 측정은 p50 1.453ms, p95 3.273ms였고 원시 sample을 검증 문서에 기록했다. 저장된 F21의 Input Monitoring 허용 상태와 monitor 등록은 확인했다. modifier 합성 Carbon event의 현재 FIFO, 후속 키 실제 게시, 실행 중 권한 철회, 물리 F21~F24 비독점, 정식 배포 login은 재검증하지 못해 미완료로 남겼다.
+
+- [ ] **Step 6: stage 9 formal 커밋 구성 후보**
+
+builder는 커밋하지 않는다. conductor는 Task 11~16 검증과 stage 9 승인이 끝난 뒤 stage 6 checkpoint를 정리하고 전체 issue #6 변경을 누락 없이 다음 logical unit으로 구성한다.
+
+```text
+feat(macos): add editable macro titles and legacy migration
+feat(macos): add shortcut token editing
+fix(macos): commit Carbon conflicts after settings persistence
+feat(macos): add General settings and About action
+test(macos): verify issue 6 acceptance behavior
+docs: update macOS macro verification
+```
+
+각 production 변경은 대응 테스트와 같은 formal 커밋에 포함하며, 검증 문서가 실제 결과를 포함할 때만 docs 커밋을 만든다.
+
 ## 수용 기준 연결
 
 | 기준 | task | 검증 |
 | --- | --- | --- |
 | 1. macOS 13 메뉴 바·설정 | 1, 8 | smoke, Release, 실제 UI |
-| 2. 무제한 UUID 항목·저장 | 2, 3, 8 | validation, round-trip, 30개 UI |
-| 3. 키 규칙·Carbon/HID·조건부 권한 | 2, 4, 5 | matrix, usage, API 호출 수 |
-| 4. 한글 입력기 Unicode | 6, 10 | cluster 테스트, TextEdit |
-| 5. 후속 키 1회·생성 실패 게시 0 | 6 | event 순서와 실패 테스트 |
-| 6. 빠른 FIFO | 6, 9 | 동시 게시 1, 100 요청 |
-| 7. 권한·로드·등록·HID·저장 오류 | 3~7, 10 | 항목 상태, 게시 차단, rollback, 실제 철회 |
-| 8. clipboard fallback·retry 없음 | 6, 9, 10 | 게시 수와 정적 검색 |
-| 9. 문자열·활성 앱 비노출 | 3, 6~10 | 결과/UI/log/doc 검사 |
-| 10. Release 100회 p50/p95 기준값 | 10 | 원시 100개와 nearest-rank, 임계값 없음 명시 |
-| 11. 로그인 시 실행 기본값·전환 | 8 | `LoginItemControllerTests`, 실제 메뉴 전환 |
+| 2. 무제한 UUID 항목·제목·저장·기존 파일 마이그레이션 | 2, 3, 8, 11, 16 | validation, title round-trip, missing-key migration, null·비문자열 거부, 실제 UI |
+| 3. 키 규칙·Carbon/HID·조건부 권한 | 2, 4, 5, 13, 16 | matrix, identity, usage, API 호출 수, 실제 권한 전환 |
+| 4. 한글 입력기 Unicode | 6, 10, 16 | cluster 테스트, TextEdit |
+| 5. 후속 키 1회·생성 실패 게시 0 | 6, 12, 16 | event 순서와 실패 테스트, trailing 입력 UI |
+| 6. 빠른 FIFO | 6, 9, 16 | 동시 게시 1, 100 요청 |
+| 7. 권한·로드·등록·HID·저장 오류 | 3~7, 10, 13, 14, 16 | 항목 상태, 게시 차단, staged rollback, 실제 철회 |
+| 8. clipboard fallback·retry 없음 | 6, 9, 10, 16 | 게시 수와 정적 검색 |
+| 9. 문자열·활성 앱 비노출 | 3, 6~10, 16 | 결과/UI/log/doc 검사 |
+| 10. Release 100회 p50/p95 기준값 | 10, 16 | 원시 100개와 nearest-rank, 임계값 없음 명시 |
+| 11. 로그인 시 실행 기본값·전환 | 8, 15, 16 | `LoginItemControllerTests`, 일반 탭과 실제 로그인 항목 |
+| 12. modifier·기준 키 토큰과 교체·삭제 | 12, 16 | mode decision, key name, 실제 focus·clear 동작 |
+| 13. Carbon 충돌 항목 disabled 저장과 저장 실패 rollback | 13, 14, 16 | identity 재사용, unrouted candidate, persistence-before-commit, 실제 충돌 |
+| 14. 매크로·일반 설정과 표준 About | 15, 16 | view model/action wiring, Debug build, 실제 표준 패널 |
 
 ## 완료 전 검증
 
+Task 16을 conductor context에서 마지막으로 실행한다.
+
 Run: `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS' && xcodebuild build -project apps/macos/Kocro.xcodeproj -scheme Kocro -configuration Release CODE_SIGNING_ALLOWED=NO && ! rg -n 'AIMacro|com\.caost\.AIMacro|CGEventTap|addGlobalMonitorForEvents|NSPasteboard|Process\(|NSTask|URLSession' apps/macos/Kocro documents/reference/macos-macro-text-input-verification.md`
 
-Expected: 전체 XCTest와 Release build 성공, 잘못된 이름과 금지 API 없음, 검증 문서에 실제 기능 결과와 100개 측정값·p50·p95가 모두 기록됨.
+Expected: 전체 XCTest와 Release build 성공, 잘못된 이름·금지 API·외부 package 없음, 검증 문서에 criterion 1~14의 실제 기능 결과와 100개 측정값·p50·p95가 모두 기록됨.

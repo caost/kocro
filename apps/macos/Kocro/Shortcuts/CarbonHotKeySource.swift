@@ -70,6 +70,7 @@ final class CarbonHotKeySource: CarbonServing {
     func register(id: UInt32, shortcut: ShortcutDefinition) -> Bool {
         dispatchPrecondition(condition: .onQueue(.main))
         guard resources.hasEventHandler,
+              !resources.contains(id: id),
               let keyCode = Self.keyCode(for: shortcut.key) else {
             return false
         }
@@ -82,8 +83,13 @@ final class CarbonHotKeySource: CarbonServing {
             options: UInt32(kEventHotKeyExclusive)
         )
         guard status == noErr, let hotKey else { return false }
-        resources.add(hotKey)
+        resources.add(hotKey, id: id)
         return true
+    }
+
+    func unregister(id: UInt32) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        resources.unregister(id: id)
     }
 
     func unregisterAll() {
@@ -146,7 +152,7 @@ private final class CarbonHotKeyResources: @unchecked Sendable {
     private var disposed = false
     private var eventHandler: EventHandlerRef?
     private var callbackContext: UnsafeMutableRawPointer?
-    private var hotKeys: [EventHotKeyRef] = []
+    private var hotKeys: [UInt32: EventHotKeyRef] = [:]
 
     init(
         api: CarbonHotKeyAPI,
@@ -163,14 +169,25 @@ private final class CarbonHotKeyResources: @unchecked Sendable {
         return eventHandler != nil
     }
 
-    func add(_ hotKey: EventHotKeyRef) {
+    func contains(id: UInt32) -> Bool {
         dispatchPrecondition(condition: .onQueue(.main))
-        hotKeys.append(hotKey)
+        return hotKeys[id] != nil
+    }
+
+    func add(_ hotKey: EventHotKeyRef, id: UInt32) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        hotKeys[id] = hotKey
+    }
+
+    func unregister(id: UInt32) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard let hotKey = hotKeys.removeValue(forKey: id) else { return }
+        api.unregister(hotKey)
     }
 
     func unregisterAll() {
         dispatchPrecondition(condition: .onQueue(.main))
-        hotKeys.forEach(api.unregister)
+        hotKeys.values.forEach(api.unregister)
         hotKeys.removeAll()
     }
 

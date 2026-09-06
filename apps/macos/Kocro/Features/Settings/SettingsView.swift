@@ -1,5 +1,19 @@
 import SwiftUI
 
+enum SettingsSection: String, CaseIterable, Identifiable {
+    case macros
+    case general
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .macros: return "매크로"
+        case .general: return "일반"
+        }
+    }
+}
+
 @MainActor
 final class SettingsViewModel: ObservableObject {
     @Published var settings: AppSettings {
@@ -10,6 +24,7 @@ final class SettingsViewModel: ObservableObject {
     @Published var showsReplaceWarning = false
     @Published var saveErrorMessage: String?
     @Published var registration: [UUID: RegistrationState] = [:]
+    @Published var selectedSection: SettingsSection = .macros
     @Published private(set) var isDirty = false
 
     let validator: SettingsValidator
@@ -25,15 +40,7 @@ final class SettingsViewModel: ObservableObject {
     }
 
     func add() {
-        settings.macros.append(
-            MacroDefinition(
-                id: UUID(),
-                isEnabled: false,
-                shortcut: .init(key: .empty, modifiers: []),
-                text: "",
-                trailingKey: nil
-            )
-        )
+        settings.macros.append(.newDraft())
     }
 
     func delete(at offsets: IndexSet) {
@@ -132,11 +139,66 @@ final class SettingsViewModel: ObservableObject {
     }
 }
 
+@MainActor
+struct GeneralSettingsViewModel {
+    private let app: AppController
+    private let login: LoginItemController
+    private let draft: AppSettings
+
+    init(app: AppController, login: LoginItemController, draft: AppSettings? = nil) {
+        self.app = app
+        self.login = login
+        self.draft = draft ?? app.draft
+    }
+
+    var loginEnabled: Bool { login.isEnabled }
+    var loginErrorMessage: String? { login.errorMessage }
+    var accessibilityGranted: Bool { app.permissionState.accessibility }
+    var inputMonitoringGranted: Bool? { app.permissionState.inputMonitoring }
+    var showsInputMonitoring: Bool {
+        needsInputMonitoring(app.runtime) || needsInputMonitoring(draft)
+    }
+
+    func setLoginEnabled(_ enabled: Bool) {
+        login.setEnabledReportingError(enabled)
+    }
+
+    func requestAccessibility() { app.requestAccessibility() }
+    func openAccessibilitySettings() { app.openPrivacySettings(.accessibility) }
+    func requestInputMonitoring() { app.requestInputMonitoring() }
+    func openInputMonitoringSettings() { app.openPrivacySettings(.inputMonitoring) }
+    func refreshPermissions() {
+        app.refreshPermissions(forDraft: draft, reconcileShortcuts: false)
+    }
+
+    private func needsInputMonitoring(_ settings: AppSettings) -> Bool {
+        settings.macros.contains { $0.isEnabled && $0.shortcut.isHIDOnly }
+    }
+}
+
 struct SettingsView: View {
     @ObservedObject var model: SettingsViewModel
+    @ObservedObject var app: AppController
+    @ObservedObject var login: LoginItemController
     let prepare: () -> Void
 
     var body: some View {
+        TabView(selection: $model.selectedSection) {
+            macrosSection
+                .tabItem { Text(SettingsSection.macros.label) }
+                .tag(SettingsSection.macros)
+            GeneralSettingsView(
+                model: .init(app: app, login: login, draft: model.settings)
+            )
+            .tabItem { Text(SettingsSection.general.label) }
+            .tag(SettingsSection.general)
+        }
+        .padding()
+        .frame(minWidth: 1_100, minHeight: 560)
+        .onAppear(perform: prepare)
+    }
+
+    private var macrosSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Kocro 설정")
                 .font(.title2)
@@ -173,9 +235,66 @@ struct SettingsView: View {
                     .keyboardShortcut("s", modifiers: .command)
             }
         }
-        .padding()
-        .frame(minWidth: 760, minHeight: 560)
-        .onAppear(perform: prepare)
+        .padding(.top, 8)
+    }
+}
+
+private struct GeneralSettingsView: View {
+    let model: GeneralSettingsViewModel
+
+    var body: some View {
+        Form {
+            Section("로그인") {
+                Toggle(
+                    "로그인 시 실행",
+                    isOn: Binding(
+                        get: { model.loginEnabled },
+                        set: model.setLoginEnabled
+                    )
+                )
+                if let message = model.loginErrorMessage {
+                    Text(message)
+                        .foregroundStyle(.red)
+                }
+            }
+
+            Section("Accessibility") {
+                permissionStatus(granted: model.accessibilityGranted)
+                Button("권한 안내 요청", action: model.requestAccessibility)
+                    .accessibilityLabel("Accessibility 권한 안내 요청")
+                Button("시스템 설정 열기", action: model.openAccessibilitySettings)
+                    .accessibilityLabel("Accessibility 시스템 설정 열기")
+            }
+
+            if model.showsInputMonitoring {
+                Section("Input Monitoring") {
+                    permissionStatus(granted: model.inputMonitoringGranted == true)
+                    Button("권한 요청", action: model.requestInputMonitoring)
+                        .accessibilityLabel("Input Monitoring 권한 요청")
+                    Button("시스템 설정 열기", action: model.openInputMonitoringSettings)
+                        .accessibilityLabel("Input Monitoring 시스템 설정 열기")
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .padding(.top, 8)
+        .onAppear(perform: model.refreshPermissions)
+    }
+
+    private func permissionStatus(granted: Bool) -> some View {
+        Text(granted ? "허용됨" : "권한 필요")
+            .accessibilityLabel(granted ? "권한 허용됨" : "권한 필요")
+    }
+}
+
+struct MacroRecorderAccessibilityLabels: Equatable {
+    let shortcut: String
+    let trailing: String
+
+    init(_ macro: MacroDefinition) {
+        let context = "\(macro.displayTitle) (\(macro.id.uuidString))"
+        shortcut = "\(context) 단축키"
+        trailing = "\(context) 후속 키"
     }
 }
 
@@ -186,17 +305,32 @@ private struct MacroRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
+                TextField("제목", text: $macro.title, prompt: Text(macro.displayTitle))
+                    .frame(width: 180)
+                    .accessibilityLabel(macro.displayTitle)
                 Toggle("활성화", isOn: $macro.isEnabled)
                     .toggleStyle(.checkbox)
-                KeyRecorder(shortcut: $macro.shortcut)
-                    .frame(width: 150, height: 26)
-                Picker("F21~F24", selection: hidFunctionBinding) {
-                    Text("선택 안 함").tag(0)
-                    ForEach(21...24, id: \.self) { number in
-                        Text("F\(number)").tag(number)
+                HStack(spacing: 6) {
+                    KeyRecorder(
+                        shortcut: $macro.shortcut,
+                        accessibilityLabel: recorderAccessibilityLabels.shortcut
+                    )
+                        .fixedSize(horizontal: true, vertical: false)
+                        .frame(height: 26)
+                    Picker("F21~F24", selection: hidFunctionBinding) {
+                        Text("F21~F24").tag(0)
+                        ForEach(21...24, id: \.self) { number in
+                            Text("F\(number)").tag(number)
+                        }
                     }
+                    .labelsHidden()
+                    .frame(width: 100)
                 }
-                .frame(width: 160)
+                .padding(4)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.secondary.opacity(0.3))
+                )
                 Spacer()
                 Text(String(macro.id.uuidString.prefix(8)))
                     .font(.caption.monospaced())
@@ -227,9 +361,14 @@ private struct MacroRow: View {
                     KeyRecorder(
                         shortcut: trailingShortcutBinding,
                         prompt: "후속 키 입력",
-                        allowsUnmodified: true
+                        mode: .trailing,
+                        accessibilityLabel: recorderAccessibilityLabels.trailing
                     )
-                        .frame(width: 150, height: 26)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .frame(height: 26)
+                    Button("지우기") {
+                        macro.trailingKey = nil
+                    }
                 }
             }
 
@@ -240,6 +379,10 @@ private struct MacroRow: View {
             }
         }
         .padding(.vertical, 6)
+    }
+
+    private var recorderAccessibilityLabels: MacroRecorderAccessibilityLabels {
+        MacroRecorderAccessibilityLabels(macro)
     }
 
     private var hidFunctionBinding: Binding<Int> {
@@ -274,12 +417,7 @@ private struct MacroRow: View {
 
     private var trailingShortcutBinding: Binding<ShortcutDefinition> {
         Binding(
-            get: {
-                guard case .custom(let keyCode?, let modifiers) = macro.trailingKey else {
-                    return .init(key: .empty, modifiers: [])
-                }
-                return .init(key: .keyCode(keyCode), modifiers: modifiers)
-            },
+            get: { ShortcutDefinition(trailingKey: macro.trailingKey) },
             set: { shortcut in
                 switch shortcut.key {
                 case .keyCode(let keyCode):

@@ -3,6 +3,59 @@ import XCTest
 @testable import Kocro
 
 final class JSONSettingsStoreTests: XCTestCase {
+    func testLegacyMacrosWithoutTitlesMigrateByOrderAndWriteTitlesOnNextSave() throws {
+        let firstID = UUID()
+        let secondID = UUID()
+        let legacy = AppSettings(
+            macros: [
+                MacroDefinition(
+                    id: firstID,
+                    isEnabled: true,
+                    shortcut: .init(key: .function(13), modifiers: []),
+                    text: "첫째",
+                    trailingKey: .enter
+                ),
+                MacroDefinition(
+                    id: secondID,
+                    isEnabled: false,
+                    shortcut: .init(key: .empty, modifiers: []),
+                    text: "둘째",
+                    trailingKey: .custom(keyCode: 0, modifiers: .shift)
+                ),
+            ]
+        )
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(legacy)) as? [String: Any]
+        )
+        var macros = try XCTUnwrap(object["macros"] as? [[String: Any]])
+        for index in macros.indices {
+            macros[index].removeValue(forKey: "title")
+        }
+        object["macros"] = macros
+        let file = MemorySettingsFile(
+            contents: try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        )
+        let store = JSONSettingsStore(file: file, validator: .init())
+
+        let loaded = try store.load()
+
+        XCTAssertEqual(loaded.macros.map(\.id), [firstID, secondID])
+        XCTAssertEqual(loaded.macros.map(\.isEnabled), [true, false])
+        XCTAssertEqual(loaded.macros.map(\.shortcut), legacy.macros.map(\.shortcut))
+        XCTAssertEqual(loaded.macros.map(\.text), ["첫째", "둘째"])
+        XCTAssertEqual(
+            loaded.macros.map(\.trailingKey),
+            [.enter, .custom(keyCode: 0, modifiers: .shift)]
+        )
+
+        try store.save(loaded)
+        let saved = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: try XCTUnwrap(file.contents)) as? [String: Any]
+        )
+        let savedMacros = try XCTUnwrap(saved["macros"] as? [[String: Any]])
+        XCTAssertEqual(savedMacros.compactMap { $0["title"] as? String }, ["매크로 1", "매크로 2"])
+    }
+
     func testMissingRoundTripPreservesOrderUnicodeAndPermissions() throws {
         let file = MemorySettingsFile(contents: nil)
         let store = JSONSettingsStore(file: file, validator: .init())
@@ -15,6 +68,44 @@ final class JSONSettingsStoreTests: XCTestCase {
         XCTAssertEqual(try store.load(), reversed)
         XCTAssertEqual(file.permissions, 0o600)
         XCTAssertEqual(file.replaceCount, 2)
+    }
+
+    func testEditedTitlesRoundTripWithoutNormalization() throws {
+        var settings = AppSettings.defaults
+        settings.macros[0].title = "  사용자 제목  "
+        settings.macros[1].title = ""
+        let file = MemorySettingsFile(contents: nil)
+        let store = JSONSettingsStore(file: file, validator: .init())
+
+        try store.save(settings)
+
+        XCTAssertEqual(try store.load().macros.map(\.title), settings.macros.map(\.title))
+    }
+
+    func testPresentNonStringTitleFailsTheWholeLoad() throws {
+        let encoded = try JSONEncoder().encode(AppSettings.defaults)
+        let variants: [Any] = [NSNull(), 1, ["value": "매크로"]]
+
+        for invalidTitle in variants {
+            var object = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+            )
+            var macros = try XCTUnwrap(object["macros"] as? [[String: Any]])
+            macros[0]["title"] = invalidTitle
+            object["macros"] = macros
+            let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+
+            XCTAssertThrowsError(
+                try JSONSettingsStore(
+                    file: MemorySettingsFile(contents: data),
+                    validator: .init()
+                ).load()
+            ) {
+                guard case StoreError.invalidFile = $0 else {
+                    return XCTFail("StoreError.invalidFile이 필요합니다: \($0)")
+                }
+            }
+        }
     }
 
     func testCorruptOrInvalidFileFailsTheWholeLoad() throws {
