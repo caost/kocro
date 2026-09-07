@@ -78,6 +78,12 @@ apps/macos/
 
 `ShortcutDefinition`은 기준 키 하나와 Command, Control, Option, Shift 보조 키 집합을 가진다. 일반 키는 macOS 가상 키 코드가 안정적으로 정의된 문자·숫자·기호·탐색 키, keypad 숫자·연산 키와 F1~F12를 뜻하며 보조 키 자체, Delete, Backspace, Escape, Fn, Caps Lock과 미디어 키는 제외한다. 일반 키는 보조 키가 하나 이상 있어야 한다. F13~F20은 보조 키 없이 사용하거나 보조 키와 결합할 수 있다. F21~F35는 전역 단축키 저장과 등록 대상에서 제외한다. 활성화된 항목끼리 같은 단축키를 사용할 수 없다.
 
+Command만 사용하는 표준 편집·파일·윈도우·앱 단축키인 Command-A/S/F/H/G/Z/X/C/V/Q/W/O/P/comma/N/M은 활성 실행 단축키로 저장하지 않는다. 이 목록은 저장 전에 검증하고 `이미 사용 중인 단축키입니다`라고 표시한다. Control, Option 또는 Shift가 함께 있는 조합과 앱별 단축키는 사전에 사용 여부를 추측하지 않고 Carbon 등록 결과로 충돌을 판정한다.
+
+이 규칙을 추가하기 전에 저장된 표준 Command 단축키는 설정을 불러올 때 매크로의
+UUID, 제목, 단축키, 문자열, 후속 키와 순서를 유지한 채 비활성화한다. 설정 파일
+전체를 손상된 것으로 처리하지 않는다.
+
 `ShortcutRegistrationIdentity`는 Carbon에 전달할 macOS 가상 키 코드와 지원하는 보조 키 비트 조합으로 구성하며 매크로 UUID는 포함하지 않는다. 활성 단축키 중복도 이 identity로 검증한다. `.letter`와 `.keyCode`처럼 모델 표현이 달라도 같은 가상 키 코드와 보조 키 조합으로 등록되면 같은 identity로 본다. 지원하지 않는 보조 키 비트는 검증에서 거부하며 identity를 만들 때 임의로 제거하지 않는다.
 
 일반 키와 F13~F20은 포커스된 단축키 입력 컨트롤의 로컬 키 이벤트로 기록한다. 입력 컨트롤은 보조 키와 기준 키를 VIA와 비슷한 개별 토큰으로 표시한다. 전역 단축키 편집 모드에서 한 번의 새 키 입력은 기존 토큰 전체를 교체한다. 보조 키 입력 여부와 관계없이 Delete 또는 Backspace는 단축키를 비우며 Escape는 값을 유지한 채 입력 포커스를 해제한다. 사용자 지정 후속 키 편집 모드에서는 Escape, Delete와 Backspace도 후속 키로 기록할 수 있고 별도 `지우기` 버튼으로 값을 비운다. 두 모드 모두 key repeat, 보조 키만 누른 입력과 지원하지 않는 키는 기존 값을 유지한다. 문자·숫자·기호·탐색 키와 keypad 키는 사람이 알아볼 수 있는 키 이름으로 표시하며 저장 형식은 `ShortcutDefinition`을 그대로 사용한다. 일반 키 조합과 F13~F20의 전역 수신에는 `RegisterEventHotKey`를 사용한다. `IOHIDManager`, `CGEventTap`과 `NSEvent` 전역 모니터는 사용하지 않는다.

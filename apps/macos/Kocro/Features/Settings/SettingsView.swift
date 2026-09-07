@@ -126,7 +126,7 @@ struct SupportedKeyHelp {
     static let sections = [
         Section(
             title: "실행 단축키",
-            body: "실행 단축키는 modifier와 문자·숫자·기호, navigation·whitespace 키를 조합해 입력합니다. Escape, Backspace와 Delete는 실행 단축키로 사용할 수 없습니다. 일반 키와 F1~F12에는 보조 키가 필요합니다. F13~F20은 단독 또는 보조 키 조합을 지원합니다. F21~F35, Fn, Caps Lock, 미디어 키는 지원하지 않습니다."
+            body: "실행 단축키는 modifier와 문자·숫자·기호, navigation·whitespace 키를 조합해 입력합니다. Escape, Backspace와 Delete는 실행 단축키로 사용할 수 없습니다. 일반 키와 F1~F12에는 보조 키가 필요합니다. Command만 사용하는 표준 단축키는 사용할 수 없습니다. F13~F20은 단독 또는 보조 키 조합을 지원합니다. F21~F35, Fn, Caps Lock, 미디어 키는 지원하지 않습니다."
         ),
         Section(
             title: "후속 키",
@@ -269,6 +269,13 @@ final class SettingsViewModel: ObservableObject {
         tokenDrafts[.shortcut(id)]?.text ?? ""
     }
 
+    func collapsedShortcutTokens(for id: UUID) -> [String] {
+        collapsedShortcutText(for: id)
+            .split(separator: "+", omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
     func badge(for id: UUID) -> MacroStatusBadge {
         guard let macro = settings.macros.first(where: { $0.id == id }) else {
             return .registrationFailed
@@ -316,10 +323,35 @@ final class SettingsViewModel: ObservableObject {
         }
 
         var errors = validator.issues(for: macro, in: settings).map(message(for:))
+        if let draftIssue = currentShortcutIssue(for: macro) {
+            let draftMessage = message(for: draftIssue)
+            if !errors.contains(draftMessage) {
+                errors.append(draftMessage)
+            }
+        }
         if let registrationState = registration[id], registrationState != .registered {
             errors.append(registrationMessage(registrationState))
         }
         return errors
+    }
+
+    private func currentShortcutIssue(for macro: MacroDefinition) -> ValidationError? {
+        guard macro.isEnabled,
+              let draft = tokenDrafts[.shortcut(macro.id)],
+              case .shortcut(let shortcut)? = TokenShortcutCodec.validate(
+                draft.text,
+                mode: .shortcut
+              ).value else {
+            return nil
+        }
+        do {
+            try validator.validateShortcut(shortcut)
+            return nil
+        } catch let issue as ValidationError {
+            return issue
+        } catch {
+            return nil
+        }
     }
 
     private func message(for issue: ValidationError) -> String {
@@ -333,6 +365,8 @@ final class SettingsViewModel: ObservableObject {
         case .emptyShortcut, .modifierRequired, .unsupportedFunction,
              .unsupportedModifiers:
             return "단축키를 수정하세요"
+        case .reservedShortcut:
+            return "이미 사용 중인 단축키입니다"
         case .duplicateShortcut:
             return "활성 단축키가 중복됩니다"
         case .invalidTrailing:
@@ -430,7 +464,7 @@ final class SettingsViewModel: ObservableObject {
             let issue = issues.first { issue in
                 switch issue {
                 case .emptyShortcut, .modifierRequired, .unsupportedFunction,
-                     .unsupportedModifiers,
+                     .unsupportedModifiers, .reservedShortcut,
                      .duplicateShortcut:
                     return true
                 default:
@@ -446,7 +480,7 @@ final class SettingsViewModel: ObservableObject {
             case .duplicateID:
                 focus = .title(macro.id)
             case .emptyShortcut, .modifierRequired, .unsupportedFunction,
-                 .unsupportedModifiers,
+                 .unsupportedModifiers, .reservedShortcut,
                  .duplicateShortcut:
                 focus = .shortcut(macro.id)
             }
@@ -930,12 +964,9 @@ private struct MacroCard: View {
                 .frame(minWidth: 160)
                 .accessibilityLabel(labels.title)
                 .focused(focusedField, equals: .title(macro.id))
-                Text(model.collapsedShortcutText(for: macro.id).isEmpty
-                     ? "단축키 없음"
-                     : model.collapsedShortcutText(for: macro.id))
-                    .lineLimit(1)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                CollapsedShortcutBlocks(
+                    tokens: model.collapsedShortcutTokens(for: macro.id)
+                )
                 Spacer()
                 Text(badge.label)
                     .font(.caption.weight(.semibold))
@@ -1037,6 +1068,39 @@ private struct MacroCard: View {
         MacroRecorderAccessibilityLabels(macro)
     }
 
+}
+
+private struct CollapsedShortcutBlocks: View {
+    let tokens: [String]
+
+    var body: some View {
+        if tokens.isEmpty {
+            Text("단축키 없음")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            HStack(spacing: 3) {
+                ForEach(Array(tokens.enumerated()), id: \.offset) { _, token in
+                    Text(token)
+                        .lineLimit(1)
+                        .font(.caption.monospaced())
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 3)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.secondary.opacity(0.12))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(Color.secondary.opacity(0.25))
+                        )
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("실행 단축키")
+            .accessibilityValue(tokens.joined(separator: ", "))
+        }
+    }
 }
 
 enum MacroActivationControlKind: Equatable {

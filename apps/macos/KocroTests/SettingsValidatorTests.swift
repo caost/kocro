@@ -4,6 +4,35 @@ import XCTest
 final class SettingsValidatorTests: XCTestCase {
     let validator = SettingsValidator()
 
+    func testRejectsCommonCommandShortcutsBeforeCarbonRegistration() {
+        let reservedKeys: [UInt16] = [
+            0, 1, 3, 4, 5, 6, 7, 8, 9, 12, 13, 31, 35, 43, 45, 46,
+        ]
+
+        for keyCode in reservedKeys {
+            XCTAssertThrowsError(
+                try validator.validateShortcut(
+                    .init(key: .keyCode(keyCode), modifiers: .command)
+                )
+            ) { error in
+                guard case ValidationError.reservedShortcut = error else {
+                    return XCTFail("expected reservedShortcut, got \(error)")
+                }
+            }
+        }
+
+        XCTAssertNoThrow(
+            try validator.validateShortcut(
+                .init(key: .keyCode(8), modifiers: [.control, .option])
+            )
+        )
+        XCTAssertThrowsError(
+            try validator.validateShortcut(
+                .init(key: .letter("c"), modifiers: .command)
+            )
+        )
+    }
+
     func testDefaultsAndValidationExcludeF21ThroughF24ExecutionShortcuts() {
         XCTAssertEqual(
             AppSettings.defaults.macros.map(\.shortcut.key),
@@ -123,7 +152,7 @@ final class SettingsValidatorTests: XCTestCase {
             try validator.validateShortcut(.init(key: .letter("a"), modifiers: []))
         )
         XCTAssertNoThrow(
-            try validator.validateShortcut(.init(key: .letter("a"), modifiers: [.command]))
+            try validator.validateShortcut(.init(key: .letter("b"), modifiers: [.command]))
         )
         XCTAssertThrowsError(
             try validator.validateShortcut(.init(key: .letter("1"), modifiers: [.command]))

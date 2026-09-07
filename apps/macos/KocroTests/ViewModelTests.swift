@@ -656,6 +656,51 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(model.focusedField, .shortcut(macro.id))
     }
 
+    func testCollapsedShortcutSplitsCanonicalTextIntoTokenBlocks() {
+        let macro = MacroDefinition(
+            id: UUID(),
+            isEnabled: false,
+            shortcut: .init(key: .keyCode(8), modifiers: .command),
+            text: "",
+            trailingKey: nil
+        )
+        let model = SettingsViewModel(
+            settings: .init(macros: [macro]),
+            validator: .init()
+        )
+
+        XCTAssertEqual(
+            model.collapsedShortcutTokens(for: macro.id),
+            ["{KC_CMD}", "{KC_C}"]
+        )
+    }
+
+    func testReservedShortcutShowsSpecificMessageAndFocusesShortcut() {
+        let macro = MacroDefinition(
+            id: UUID(),
+            isEnabled: true,
+            shortcut: .init(key: .keyCode(8), modifiers: [.control, .option]),
+            text: "값",
+            trailingKey: nil
+        )
+        let model = SettingsViewModel(
+            settings: .init(macros: [macro]),
+            validator: .init()
+        )
+
+        model.mutateTokenDraft(.shortcut(macro.id)) {
+            $0.applyRecorded(.init(key: .keyCode(8), modifiers: .command))
+        }
+
+        XCTAssertTrue(model.errors(for: macro.id).contains("이미 사용 중인 단축키입니다"))
+
+        model.save()
+
+        XCTAssertTrue(model.errors(for: macro.id).contains("이미 사용 중인 단축키입니다"))
+        XCTAssertEqual(model.expandedMacroID, macro.id)
+        XCTAssertEqual(model.focusedField, .shortcut(macro.id))
+    }
+
     func testSupportedKeyHelpCoversRequiredTopics() {
         let text = SupportedKeyHelp.sections.map(\.body).joined(separator: "\n")
         for required in ["실행 단축키", "후속 키", "별칭", "보조 키",
@@ -663,6 +708,7 @@ final class ViewModelTests: XCTestCase {
             XCTAssertTrue(text.contains(required), "missing help topic: \(required)")
         }
         XCTAssertTrue(text.contains("Escape, Backspace와 Delete는 실행 단축키로 사용할 수 없습니다"))
+        XCTAssertTrue(text.contains("Command만 사용하는 표준 단축키"))
     }
 
     func testCorruptSettingsWarningRemainsAboveTabsUntilSuccessfulSave() {

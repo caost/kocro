@@ -29,6 +29,10 @@ final class JSONSettingsStore: SettingsStoring {
                 decoded.macros[index].isEnabled = false
                 decoded.macros[index].shortcut = .init(key: .empty, modifiers: [])
             }
+            for index in decoded.macros.indices
+            where ReservedShortcutPolicy.contains(decoded.macros[index].shortcut) {
+                decoded.macros[index].isEnabled = false
+            }
             return try validator.validate(decoded)
         } catch {
             throw StoreError.invalidFile
