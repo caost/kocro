@@ -117,7 +117,7 @@ final class SettingsValidatorTests: XCTestCase {
     }
 
     func testDuplicateShortcutUsesCanonicalRegistrationIdentity() {
-        let values = ["a", "A"].map { letter in
+        let values = ["b", "B"].map { letter in
             MacroDefinition(
                 id: UUID(),
                 isEnabled: true,
@@ -129,13 +129,17 @@ final class SettingsValidatorTests: XCTestCase {
             MacroDefinition(
                 id: UUID(),
                 isEnabled: true,
-                shortcut: .init(key: .keyCode(0), modifiers: .command),
+                shortcut: .init(key: .keyCode(11), modifiers: .command),
                 text: "x",
                 trailingKey: nil
             )
         ]
 
-        XCTAssertThrowsError(try validator.validate(.init(macros: values)))
+        XCTAssertThrowsError(try validator.validate(.init(macros: values))) { error in
+            guard case ValidationError.duplicateShortcut = error else {
+                return XCTFail("expected duplicateShortcut, got \(error)")
+            }
+        }
     }
 
     func testRegistrationIdentityRejectsUnsupportedModifierBits() {

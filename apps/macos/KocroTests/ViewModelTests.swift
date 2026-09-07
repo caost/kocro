@@ -698,6 +698,21 @@ final class ViewModelTests: XCTestCase {
         )
     }
 
+    func testCollapsedEmptyShortcutAccessibilityPresentationIsContextual() {
+        let macro = MacroDefinition.newDraft()
+        let model = SettingsViewModel(
+            settings: .init(macros: [macro]),
+            validator: .init()
+        )
+
+        let presentation = model.collapsedShortcutAccessibilityPresentation(
+            for: macro.id
+        )
+
+        XCTAssertTrue(presentation.label.contains(macro.id.uuidString))
+        XCTAssertEqual(presentation.value, "설정 안 됨")
+    }
+
     func testReservedShortcutShowsSpecificMessageAndFocusesShortcut() {
         let macro = MacroDefinition(
             id: UUID(),

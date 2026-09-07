@@ -83,6 +83,11 @@ struct MacroCardAccessibilityLabels: Equatable {
     }
 }
 
+struct CollapsedShortcutAccessibilityPresentation: Equatable {
+    let label: String
+    let value: String
+}
+
 struct TokenEditorAccessibilityState: Equatable {
     let label: String
     let value: String
@@ -287,6 +292,18 @@ final class SettingsViewModel: ObservableObject {
             return rawTokens.isEmpty ? "설정 안 됨" : rawTokens.joined(separator: ", ")
         }
         return shortcut.tokens.joined(separator: ", ")
+    }
+
+    func collapsedShortcutAccessibilityPresentation(
+        for id: UUID
+    ) -> CollapsedShortcutAccessibilityPresentation {
+        let label = settings.macros.first(where: { $0.id == id })
+            .map { MacroRecorderAccessibilityLabels($0).shortcut }
+            ?? "실행 단축키"
+        return .init(
+            label: label,
+            value: collapsedShortcutAccessibilityValue(for: id)
+        )
     }
 
     func badge(for id: UUID) -> MacroStatusBadge {
@@ -1007,12 +1024,12 @@ private struct MacroCard: View {
                 }
 
                 HStack {
+                    let accessibility = model.collapsedShortcutAccessibilityPresentation(
+                        for: macro.id
+                    )
                     CollapsedShortcutBlocks(
                         tokens: model.collapsedShortcutTokens(for: macro.id),
-                        accessibilityLabel: recorderAccessibilityLabels.shortcut,
-                        accessibilityValue: model.collapsedShortcutAccessibilityValue(
-                            for: macro.id
-                        )
+                        accessibility: accessibility
                     )
                     Spacer(minLength: 0)
                 }
@@ -1100,36 +1117,37 @@ private struct MacroCard: View {
 
 private struct CollapsedShortcutBlocks: View {
     let tokens: [String]
-    let accessibilityLabel: String
-    let accessibilityValue: String
+    let accessibility: CollapsedShortcutAccessibilityPresentation
 
     var body: some View {
-        if tokens.isEmpty {
-            Text("단축키 없음")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        } else {
-            HStack(spacing: 3) {
-                ForEach(Array(tokens.enumerated()), id: \.offset) { _, token in
-                    Text(token)
-                        .lineLimit(1)
-                        .font(.caption.monospaced())
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 3)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.secondary.opacity(0.12))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(Color.secondary.opacity(0.25))
-                        )
+        Group {
+            if tokens.isEmpty {
+                Text("단축키 없음")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                HStack(spacing: 3) {
+                    ForEach(Array(tokens.enumerated()), id: \.offset) { _, token in
+                        Text(token)
+                            .lineLimit(1)
+                            .font(.caption.monospaced())
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 3)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color.secondary.opacity(0.12))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(Color.secondary.opacity(0.25))
+                            )
+                    }
                 }
             }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(accessibilityLabel)
-            .accessibilityValue(accessibilityValue)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibility.label)
+        .accessibilityValue(accessibility.value)
     }
 }
 
