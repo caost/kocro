@@ -275,23 +275,28 @@ final class SettingsViewModel: ObservableObject {
     }
 
     func collapsedShortcutTokens(for id: UUID) -> [String] {
-        collapsedShortcutText(for: id)
+        let source = collapsedShortcutText(for: id)
+        let validation = TokenShortcutCodec.validate(source, mode: .shortcut)
+        guard let canonicalText = validation.canonicalText else {
+            return source.trimmingCharacters(in: .whitespaces).isEmpty ? [] : [source]
+        }
+        return canonicalText
             .split(separator: "+", omittingEmptySubsequences: true)
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
     }
 
     func collapsedShortcutAccessibilityValue(for id: UUID) -> String {
-        guard let draft = tokenDrafts[.shortcut(id)],
-              case .shortcut(let shortcut)? = TokenShortcutCodec.validate(
-                draft.text,
-                mode: .shortcut
-              ).value,
-              !shortcut.tokens.isEmpty else {
-            let rawTokens = collapsedShortcutTokens(for: id)
-            return rawTokens.isEmpty ? "설정 안 됨" : rawTokens.joined(separator: ", ")
+        let source = collapsedShortcutText(for: id)
+        let validation = TokenShortcutCodec.validate(source, mode: .shortcut)
+        guard case .shortcut(let shortcut)? = validation.value else {
+            return source.trimmingCharacters(in: .whitespaces).isEmpty
+                ? "설정 안 됨"
+                : "유효하지 않은 단축키, \(source)"
         }
-        return shortcut.tokens.joined(separator: ", ")
+        return shortcut.tokens.isEmpty
+            ? "설정 안 됨"
+            : shortcut.tokens.joined(separator: ", ")
     }
 
     func collapsedShortcutAccessibilityPresentation(

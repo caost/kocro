@@ -713,6 +713,30 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(presentation.value, "설정 안 됨")
     }
 
+    func testCollapsedInvalidShortcutPreservesRawSeparators() {
+        let macro = MacroDefinition.newDraft()
+        let model = SettingsViewModel(
+            settings: .init(macros: [macro]),
+            validator: .init()
+        )
+        let values = [
+            "+",
+            "+{KC_C}",
+            "{KC_CMD}+",
+            "{KC_CMD}++{KC_C}",
+        ]
+
+        for value in values {
+            model.updateTokenText(value, for: .shortcut(macro.id))
+
+            XCTAssertEqual(model.collapsedShortcutTokens(for: macro.id), [value])
+            XCTAssertEqual(
+                model.collapsedShortcutAccessibilityValue(for: macro.id),
+                "유효하지 않은 단축키, \(value)"
+            )
+        }
+    }
+
     func testReservedShortcutShowsSpecificMessageAndFocusesShortcut() {
         let macro = MacroDefinition(
             id: UUID(),
