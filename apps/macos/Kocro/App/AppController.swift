@@ -165,6 +165,10 @@ final class AppController: ObservableObject {
         menuBar.registeredCount
     }
 
+    var runtimeMacros: [MacroDefinition] {
+        runtime.macros
+    }
+
     private var menuBar: MenuBarViewModel {
         MenuBarViewModel(
             statuses: [overallStatus],

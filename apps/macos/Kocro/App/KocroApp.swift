@@ -1,6 +1,58 @@
 import AppKit
 import SwiftUI
 
+extension NSApplication.AboutPanelOptionKey {
+    static let copyright = Self(rawValue: "Copyright")
+}
+
+struct AboutPanelContent {
+    let applicationName: String
+    let version: String
+    let copyright: String
+    let repositoryURL = URL(string: "https://github.com/caost/kocro")!
+    let credits: NSAttributedString
+
+    init(bundle: Bundle = .main) {
+        self.init(info: bundle.infoDictionary ?? [:])
+    }
+
+    init(info: [String: Any]) {
+        applicationName = info["CFBundleDisplayName"] as? String
+            ?? info["CFBundleName"] as? String
+            ?? "Kocro"
+
+        let shortVersion = info["CFBundleShortVersionString"] as? String ?? ""
+        let build = info["CFBundleVersion"] as? String ?? ""
+        if shortVersion.isEmpty {
+            version = build
+        } else if build.isEmpty {
+            version = shortVersion
+        } else {
+            version = "\(shortVersion) (\(build))"
+        }
+
+        copyright = info["NSHumanReadableCopyright"] as? String
+            ?? "Copyright © 2026 caost"
+
+        let credits = NSMutableAttributedString(string: "GitHub")
+        credits.addAttribute(
+            .link,
+            value: repositoryURL,
+            range: NSRange(location: 0, length: ("GitHub" as NSString).length)
+        )
+        self.credits = credits
+    }
+
+    var options: [NSApplication.AboutPanelOptionKey: Any] {
+        [
+            .applicationName: applicationName,
+            .applicationVersion: version,
+            .credits: credits,
+            .copyright: copyright,
+        ]
+    }
+}
+
 @MainActor
 struct LegacySettingsWindowAction {
     let sendAction: (Selector) -> Bool
@@ -125,7 +177,11 @@ final class AppDependencies: ObservableObject {
                 self?.settingsDidOpen()
                 openSettings()
             },
-            openAbout: { NSApp.orderFrontStandardAboutPanel(nil) },
+            openAbout: {
+                NSApp.orderFrontStandardAboutPanel(
+                    options: AboutPanelContent().options
+                )
+            },
             terminate: { NSApp.terminate(nil) }
         )
     }
