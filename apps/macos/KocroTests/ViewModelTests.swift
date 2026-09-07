@@ -775,6 +775,49 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(state.announcement, state.help)
     }
 
+    func testAccessibleMoveActionsReorderMacrosAndRespectBounds() {
+        let values = [Fixtures.carbon(13), Fixtures.carbon(14), Fixtures.carbon(15)]
+        let model = SettingsViewModel(settings: .init(macros: values), validator: .init())
+
+        XCTAssertTrue(model.move(id: values[1].id, direction: .up))
+        XCTAssertEqual(model.settings.macros.map(\.id), [values[1].id, values[0].id, values[2].id])
+        XCTAssertFalse(model.move(id: values[1].id, direction: .up))
+        XCTAssertTrue(model.move(id: values[1].id, direction: .down))
+        XCTAssertEqual(model.settings.macros.map(\.id), values.map(\.id))
+    }
+
+    func testCollapsedHeaderSelectionExpandsWithoutTogglingExpandedCard() {
+        let values = [Fixtures.carbon(13), Fixtures.carbon(14)]
+        let model = SettingsViewModel(settings: .init(macros: values), validator: .init())
+
+        model.selectHeader(values[0].id)
+        XCTAssertEqual(model.expandedMacroID, values[0].id)
+        model.selectHeader(values[0].id)
+        XCTAssertEqual(model.expandedMacroID, values[0].id)
+        model.selectHeader(values[1].id)
+        XCTAssertEqual(model.expandedMacroID, values[1].id)
+    }
+
+    func testTokenIssuePresentationIncludesOffendingTokenForVisualAndAccessibilityErrors() throws {
+        var draft = TokenEditorDraft(
+            value: .shortcut(.init(key: .empty, modifiers: [])),
+            mode: .shortcut
+        )
+        draft.updateText("{KC_CMD}+{KC_NOPE}")
+        XCTAssertFalse(draft.commit())
+        let issue = try XCTUnwrap(draft.issues.first)
+        let presentation = TokenIssuePresentation(issue: issue)
+
+        XCTAssertTrue(presentation.message.contains("{KC_NOPE}"))
+        XCTAssertEqual(presentation.accessibilityMessage, presentation.message)
+        let accessibility = TokenEditorAccessibilityState(
+            fieldLabel: "실행 단축키",
+            draft: draft
+        )
+        XCTAssertTrue(accessibility.help.contains("{KC_NOPE}"))
+        XCTAssertEqual(accessibility.announcement, accessibility.help)
+    }
+
     func testInactiveEmptyShortcutPassesTokenPreflight() {
         let macro = MacroDefinition.newDraft()
         let model = SettingsViewModel(

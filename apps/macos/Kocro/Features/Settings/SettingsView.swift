@@ -32,6 +32,11 @@ enum MacroFieldFocus: Hashable {
     case trailing(UUID)
 }
 
+enum MacroMoveDirection: Equatable {
+    case up
+    case down
+}
+
 enum MacroStatusBadge: Equatable {
     case inactive
     case unsaved
@@ -92,8 +97,9 @@ struct TokenEditorAccessibilityState: Equatable {
         label = fieldLabel
         value = draft.text.isEmpty ? "설정 안 됨" : draft.text
         if let issue = draft.issues.first {
-            help = issue.message
-            announcement = issue.message
+            let presentation = TokenIssuePresentation(issue: issue)
+            help = presentation.accessibilityMessage
+            announcement = presentation.accessibilityMessage
         } else if draft.completions.indices.contains(draft.selectedCompletion) {
             help = "자동완성 선택 \(draft.completions[draft.selectedCompletion])"
             announcement = help
@@ -101,6 +107,16 @@ struct TokenEditorAccessibilityState: Equatable {
             help = "토큰을 직접 입력하거나 키로 기록하세요"
             announcement = nil
         }
+    }
+}
+
+struct TokenIssuePresentation: Equatable {
+    let message: String
+    let accessibilityMessage: String
+
+    init(issue: TokenIssue) {
+        message = "\(issue.message) (문제 토큰: \(issue.token))"
+        accessibilityMessage = message
     }
 }
 
@@ -218,6 +234,22 @@ final class SettingsViewModel: ObservableObject {
 
     func move(from offsets: IndexSet, to destination: Int) {
         settings.macros.move(fromOffsets: offsets, toOffset: destination)
+    }
+
+    @discardableResult
+    func move(id: UUID, direction: MacroMoveDirection) -> Bool {
+        guard let index = settings.macros.firstIndex(where: { $0.id == id }) else {
+            return false
+        }
+        let destination = direction == .up ? index - 1 : index + 1
+        guard settings.macros.indices.contains(destination) else { return false }
+        settings.macros.swapAt(index, destination)
+        return true
+    }
+
+    func selectHeader(_ id: UUID) {
+        guard expandedMacroID != id else { return }
+        expandedMacroID = id
     }
 
     func tokenDraft(for field: TokenField) -> TokenEditorDraft {
@@ -764,10 +796,13 @@ private struct TokenEditor: View {
             }
 
             ForEach(Array(draft.issues.enumerated()), id: \.offset) { _, issue in
-                Text(issue.message)
+                let presentation = TokenIssuePresentation(issue: issue)
+                Text(presentation.message)
                     .font(.caption)
                     .foregroundStyle(.red)
-                    .accessibilityLabel("\(accessibilityLabel) 오류: \(issue.message)")
+                    .accessibilityLabel(
+                        "\(accessibilityLabel) 오류: \(presentation.accessibilityMessage)"
+                    )
             }
 
             Text("macOS가 먼저 처리한 조합은 토큰으로 직접 입력하세요.")
@@ -920,6 +955,12 @@ private struct MacroCard: View {
                 Image(systemName: "line.3.horizontal")
                     .foregroundStyle(.secondary)
                     .accessibilityLabel(labels.reorder)
+                    .accessibilityAction(named: Text("위로 이동")) {
+                        model.move(id: macro.id, direction: .up)
+                    }
+                    .accessibilityAction(named: Text("아래로 이동")) {
+                        model.move(id: macro.id, direction: .down)
+                    }
                 Toggle("활성화", isOn: $macro.isEnabled)
                     .toggleStyle(.checkbox)
                     .labelsHidden()
@@ -959,6 +1000,17 @@ private struct MacroCard: View {
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel(labels.expand)
+                .accessibilityValue(isExpanded ? "펼쳐짐" : "접힘")
+            }
+            .background {
+                Button {
+                    model.selectHeader(macro.id)
+                } label: {
+                    Color.clear
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(labels.expand), 헤더")
                 .accessibilityValue(isExpanded ? "펼쳐짐" : "접힘")
             }
 
