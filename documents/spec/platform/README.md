@@ -5,3 +5,4 @@
 ## 문서
 
 - [macOS 매크로 텍스트 입력 앱](./macos-macro-text-input.md)
+- [macOS 최종 화면 설계](./macos-final-ui.md)

@@ -3,369 +3,7 @@ import XCTest
 @testable import Kocro
 
 @MainActor
-final class ViewModelTests: XCTestCase {
-    func testSettingsStartsInMacrosSectionAndSupportsGeneralSelection() {
-        let model = SettingsViewModel(settings: .init(macros: []), validator: .init())
-
-        XCTAssertEqual(model.selectedSection, .macros)
-
-        model.selectedSection = .general
-
-        XCTAssertEqual(model.selectedSection, .general)
-        XCTAssertEqual(SettingsSection.allCases, [.macros, .general])
-    }
-
-    func testGeneralSettingsExposesPermissionsAndDraftHIDRequirement() {
-        let permissions = GeneralPermissionSpy(
-            state: .init(accessibility: false, inputMonitoring: false)
-        )
-        let app = AppController(
-            store: StoreSpy(loadResult: .success(.init(macros: []))),
-            shortcuts: ShortcutSpy(),
-            permissions: permissions,
-            queue: QueueSpy()
-        )
-        app.start()
-        app.draft = .init(macros: [Fixtures.hid(21)])
-        let login = LoginItemController(service: LoginServiceSpy(status: .notRegistered))
-        let general = GeneralSettingsViewModel(app: app, login: login)
-
-        XCTAssertFalse(general.loginEnabled)
-        XCTAssertNil(general.loginErrorMessage)
-        XCTAssertFalse(general.accessibilityGranted)
-        XCTAssertTrue(general.showsInputMonitoring)
-        XCTAssertEqual(general.inputMonitoringGranted, false)
-
-        general.requestAccessibility()
-        general.openAccessibilitySettings()
-        general.requestInputMonitoring()
-        general.openInputMonitoringSettings()
-
-        XCTAssertEqual(permissions.accessibilityRequestCount, 1)
-        XCTAssertEqual(permissions.inputMonitoringRequestCount, 1)
-        XCTAssertEqual(permissions.openedSettings, [.accessibility, .inputMonitoring])
-    }
-
-    func testGeneralSettingsHidesInputMonitoringWithoutEnabledRuntimeOrDraftHID() {
-        let app = AppController(
-            store: StoreSpy(loadResult: .success(.init(macros: [Fixtures.carbon(13)]))),
-            shortcuts: ShortcutSpy(),
-            permissions: PermissionSpy(),
-            queue: QueueSpy()
-        )
-        app.start()
-        let login = LoginItemController(service: LoginServiceSpy(status: .notRegistered))
-
-        XCTAssertFalse(GeneralSettingsViewModel(app: app, login: login).showsInputMonitoring)
-    }
-
-    func testGeneralSettingsRefreshesInputMonitoringForDraftOnlyHID() {
-        let permissions = PermissionSpy(
-            state: .init(accessibility: true, inputMonitoring: nil)
-        )
-        let app = AppController(
-            store: StoreSpy(loadResult: .success(.init(macros: []))),
-            shortcuts: ShortcutSpy(),
-            permissions: permissions,
-            queue: QueueSpy()
-        )
-        app.start()
-        permissions.refreshedState = .init(accessibility: true, inputMonitoring: true)
-        let draft = AppSettings(macros: [Fixtures.hid(21)])
-        let login = LoginItemController(service: LoginServiceSpy(status: .notRegistered))
-        let general = GeneralSettingsViewModel(app: app, login: login, draft: draft)
-
-        XCTAssertNil(general.inputMonitoringGranted)
-
-        general.refreshPermissions()
-
-        XCTAssertEqual(permissions.refreshNeedsHID.last, true)
-        XCTAssertEqual(general.inputMonitoringGranted, true)
-    }
-
-    func testActiveRefreshIncludesDraftHIDAndReconcilesRuntimeShortcuts() {
-        let runtime = AppSettings(macros: [Fixtures.carbon(13)])
-        let draft = AppSettings(macros: [Fixtures.hid(21)])
-        let permissions = PermissionSpy(
-            state: .init(accessibility: true, inputMonitoring: nil)
-        )
-        let shortcuts = ShortcutSpy()
-        let app = AppController(
-            store: StoreSpy(loadResult: .success(runtime)),
-            shortcuts: shortcuts,
-            permissions: permissions,
-            queue: QueueSpy()
-        )
-        app.start()
-        permissions.refreshedState = .init(accessibility: true, inputMonitoring: true)
-
-        app.refreshPermissions(forDraft: draft, reconcileShortcuts: true)
-
-        XCTAssertEqual(permissions.refreshNeedsHID.last, true)
-        XCTAssertEqual(app.permissionState.inputMonitoring, true)
-        XCTAssertEqual(shortcuts.commitCount, 2)
-        XCTAssertEqual(shortcuts.prepareCalls.last, runtime)
-    }
-
-    func testMenuRefreshIncludesDraftHIDWithoutShowingRuntimeOnlyPermissionAction() {
-        let runtime = AppSettings(macros: [Fixtures.carbon(13)])
-        let draft = AppSettings(macros: [Fixtures.hid(21)])
-        let permissions = PermissionSpy(
-            state: .init(accessibility: true, inputMonitoring: nil)
-        )
-        let shortcuts = ShortcutSpy()
-        let app = AppController(
-            store: StoreSpy(loadResult: .success(runtime)),
-            shortcuts: shortcuts,
-            permissions: permissions,
-            queue: QueueSpy()
-        )
-        app.start()
-        permissions.refreshedState = .init(accessibility: true, inputMonitoring: false)
-
-        app.refreshPermissions(forDraft: draft, reconcileShortcuts: true)
-
-        XCTAssertEqual(permissions.refreshNeedsHID.last, true)
-        XCTAssertEqual(app.permissionState.inputMonitoring, false)
-        XCTAssertEqual(shortcuts.commitCount, 2)
-        XCTAssertFalse(app.showsInputMonitoringActions)
-    }
-
-    func testInjectedAppMenuActionsInvokeEachClosureOnce() {
-        var settingsOpenCount = 0
-        var aboutCount = 0
-        var terminateCount = 0
-        let actions = AppMenuActions(
-            openSettings: { settingsOpenCount += 1 },
-            openAbout: { aboutCount += 1 },
-            terminate: { terminateCount += 1 }
-        )
-
-        actions.openSettings()
-        actions.openAbout()
-        actions.terminate()
-
-        XCTAssertEqual(settingsOpenCount, 1)
-        XCTAssertEqual(aboutCount, 1)
-        XCTAssertEqual(terminateCount, 1)
-    }
-
-    func testLegacySettingsWindowActionStopsAfterPreferencesSelectorSucceeds() {
-        var selectors: [Selector] = []
-        let action = LegacySettingsWindowAction { selector in
-            selectors.append(selector)
-            return true
-        }
-
-        action.open()
-
-        XCTAssertEqual(selectors.map(NSStringFromSelector), ["showPreferencesWindow:"])
-    }
-
-    func testLegacySettingsWindowActionFallsBackToSettingsSelector() {
-        var selectors: [Selector] = []
-        let action = LegacySettingsWindowAction { selector in
-            selectors.append(selector)
-            return false
-        }
-
-        action.open()
-
-        XCTAssertEqual(
-            selectors.map(NSStringFromSelector),
-            ["showPreferencesWindow:", "showSettingsWindow:"]
-        )
-    }
-
-    func testStatusPriorityAndRegisteredCount() {
-        let menu = MenuBarViewModel(
-            statuses: [.inputMonitoringRequired, .accessibilityRequired, .settingsError],
-            registrations: [.registered, .registrationFailed, .registered]
-        )
-
-        XCTAssertEqual(menu.statusText, "설정 오류")
-        XCTAssertEqual(menu.registeredCount, 2)
-        XCTAssertEqual(
-            MenuBarViewModel(
-                statuses: [.inputMonitoringRequired, .accessibilityRequired],
-                registrations: []
-            ).statusText,
-            "Accessibility 권한 필요"
-        )
-    }
-
-    func testUnlimitedEditingSupportsThirtyItemsDeleteAndReorder() {
-        let model = SettingsViewModel(settings: .init(macros: []), validator: .init())
-
-        for _ in 0..<30 { model.add() }
-        let last = model.settings.macros[29].id
-        model.move(from: IndexSet(integer: 29), to: 0)
-        model.delete(at: IndexSet(integer: 1))
-
-        XCTAssertEqual(model.settings.macros.first?.id, last)
-        XCTAssertEqual(model.settings.macros.count, 29)
-        XCTAssertTrue(model.settings.macros.allSatisfy(\.title.isEmpty))
-        XCTAssertTrue(model.isDirty)
-    }
-
-    func testTitleEditingStaysInDraftUntilSave() {
-        let original = AppSettings(
-            macros: [Fixtures.macro(title: "테스트 매크로", text: "값")]
-        )
-        let model = SettingsViewModel(settings: original, validator: .init())
-        var saved: AppSettings?
-        model.onSave = { saved = $0 }
-
-        model.settings.macros[0].title = "편집한 제목"
-
-        XCTAssertEqual(original.macros[0].title, "테스트 매크로")
-        XCTAssertNil(saved)
-        XCTAssertTrue(model.isDirty)
-
-        model.save()
-
-        XCTAssertEqual(saved?.macros[0].title, "편집한 제목")
-    }
-
-    func testErrorsAreScopedToMacroIDAndCountUnicodeCharacters() {
-        let invalid = MacroDefinition(
-            id: UUID(),
-            isEnabled: true,
-            shortcut: .init(key: .letter("a"), modifiers: []),
-            text: String(repeating: "👨🏽‍💻", count: 10_001),
-            trailingKey: nil
-        )
-        let valid = Fixtures.macro(text: "한글\ne\u{301}")
-        let model = SettingsViewModel(
-            settings: .init(macros: [invalid, valid]),
-            validator: .init()
-        )
-
-        XCTAssertEqual(model.characterCount(for: invalid.id), 10_001)
-        XCTAssertTrue(model.errors(for: invalid.id).contains("문자열은 10,000자 이하여야 합니다"))
-        XCTAssertTrue(model.errors(for: invalid.id).contains("단축키를 수정하세요"))
-        XCTAssertTrue(model.errors(for: valid.id).isEmpty)
-    }
-
-    func testErrorsUseCanonicalShortcutIdentityAndIgnoreInactiveTrailingDraft() {
-        let first = MacroDefinition(
-            id: UUID(),
-            isEnabled: true,
-            shortcut: .init(key: .letter("A"), modifiers: .command),
-            text: "x",
-            trailingKey: nil
-        )
-        let second = MacroDefinition(
-            id: UUID(),
-            isEnabled: true,
-            shortcut: .init(key: .keyCode(0), modifiers: .command),
-            text: "y",
-            trailingKey: nil
-        )
-        let inactive = MacroDefinition(
-            id: UUID(),
-            isEnabled: false,
-            shortcut: .init(key: .empty, modifiers: []),
-            text: "",
-            trailingKey: .custom(keyCode: nil, modifiers: [])
-        )
-        let model = SettingsViewModel(
-            settings: .init(macros: [first, second, inactive]),
-            validator: .init()
-        )
-
-        XCTAssertTrue(model.errors(for: first.id).contains("활성 단축키가 중복됩니다"))
-        XCTAssertTrue(model.errors(for: second.id).contains("활성 단축키가 중복됩니다"))
-        XCTAssertTrue(model.errors(for: inactive.id).isEmpty)
-    }
-
-    func testStatusSynchronizationDoesNotOverwriteDirtyDraft() {
-        let original = Fixtures.settings(text: "저장된 값")
-        let app = AppController(
-            store: StoreSpy(loadResult: .success(original)),
-            shortcuts: ShortcutSpy(states: [original.macros[0].id: .registrationFailed]),
-            permissions: PermissionSpy(),
-            queue: QueueSpy()
-        )
-        app.start()
-        let model = SettingsViewModel(settings: original, validator: .init())
-        model.settings.macros[0].text = "저장 전 편집"
-
-        model.synchronizeStatus(from: app)
-
-        XCTAssertEqual(model.settings.macros[0].text, "저장 전 편집")
-        XCTAssertEqual(model.registration[original.macros[0].id], .registrationFailed)
-        XCTAssertTrue(model.isDirty)
-    }
-
-    func testStatusSynchronizationReplacesCompleteRegistrationMapWithoutChangingDirtyDraft() {
-        let original = Fixtures.settings(text: "저장된 값")
-        let replacement = Fixtures.carbon(14)
-        let shortcuts = ShortcutSpy(states: [original.macros[0].id: .registrationFailed])
-        let app = AppController(
-            store: StoreSpy(loadResult: .success(original)),
-            shortcuts: shortcuts,
-            permissions: PermissionSpy(),
-            queue: QueueSpy()
-        )
-        app.start()
-        let model = SettingsViewModel(settings: original, validator: .init())
-        model.settings.macros[0].text = "저장 전 편집"
-        model.synchronizeStatus(from: app)
-
-        shortcuts.states = [replacement.id: .registered]
-        app.draft = .init(macros: [replacement])
-        app.save()
-        model.synchronizeStatus(from: app)
-
-        XCTAssertEqual(model.settings.macros[0].text, "저장 전 편집")
-        XCTAssertEqual(model.registration, [replacement.id: .registered])
-        XCTAssertTrue(model.isDirty)
-    }
-
-    func testBadLoadDraftIsReplacedWithDefaultsOnlyWhenSettingsOpen() {
-        let app = AppController(
-            store: StoreSpy(loadResult: .failure(StoreError.invalidFile)),
-            shortcuts: ShortcutSpy(),
-            permissions: PermissionSpy(),
-            queue: QueueSpy()
-        )
-        let model = SettingsViewModel(settings: .init(macros: []), validator: .init())
-        app.start()
-        model.loadDraftIfNeeded(from: app)
-        XCTAssertTrue(model.settings.macros.isEmpty)
-
-        app.prepareSettingsDraft()
-        model.loadDraftIfNeeded(from: app)
-        model.synchronizeStatus(from: app)
-
-        XCTAssertEqual(model.settings.macros.count, 12)
-        XCTAssertTrue(model.showsReplaceWarning)
-        XCTAssertFalse(model.isDirty)
-    }
-
-    func testInvalidSaveDoesNotInvokeSaveHandlerAndKeepsDirtyDraft() {
-        let macro = MacroDefinition(
-            id: UUID(),
-            isEnabled: true,
-            shortcut: .init(key: .empty, modifiers: []),
-            text: "값",
-            trailingKey: nil
-        )
-        let model = SettingsViewModel(
-            settings: .init(macros: [macro]),
-            validator: .init()
-        )
-        var saved: AppSettings?
-        model.onSave = { saved = $0 }
-
-        model.save()
-
-        XCTAssertNil(saved)
-        XCTAssertTrue(model.isDirty)
-        XCTAssertEqual(model.saveErrorMessage, "표시된 항목을 수정한 뒤 다시 저장하세요")
-    }
-
+final class KeyRecorderTests: XCTestCase {
     func testLocalKeyRecorderEnforcesFunctionKeyRules() {
         XCTAssertEqual(
             KeyRecorderTranslator.shortcut(keyCode: 105, modifiers: []),
@@ -453,7 +91,7 @@ final class ViewModelTests: XCTestCase {
     }
 
     func testRecorderKeepsCurrentValueAndFocusForIgnoredInput() {
-        for mode: KeyRecorderMode in [.shortcut, .trailing] {
+        for mode: KeyInputMode in [.shortcut, .trailing] {
             XCTAssertEqual(
                 KeyRecorderTranslator.decision(
                     keyCode: 0,
@@ -550,6 +188,18 @@ final class ViewModelTests: XCTestCase {
             view.accessibilityValue() as? String,
             "⌃ Control, ⌘ Command, A"
         )
+    }
+
+    func testRecorderKeepsKeyRecordingPromptVisibleAfterValueChanges() {
+        let view = RecorderView(initialTokens: [])
+        view.prompt = "키로 기록"
+        let emptyWidth = view.intrinsicContentSize.width
+
+        view.tokens = ["⌥ Option", "⌘ Command", "I"]
+
+        XCTAssertEqual(view.visibleLabel, "키로 기록")
+        XCTAssertEqual(view.intrinsicContentSize.width, emptyWidth)
+        XCTAssertEqual(view.accessibilityValue() as? String, "⌥ Option, ⌘ Command, I")
     }
 
     func testMacroRowsUseDistinctContextualRecorderLabelsWithoutChangingPrompts() throws {
@@ -836,19 +486,18 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(notifications.valueChangedElements.count, 2)
     }
 
-    func testRecorderIntrinsicWidthContainsLongestTokenCombination() throws {
+    func testRecorderIntrinsicWidthDoesNotChangeWithRecordedValue() {
         let view = RecorderView()
+        let prompt = view.visibleLabel
+        let promptWidth = view.intrinsicContentSize.width
+
         view.tokens = ShortcutDefinition(
             key: .keyCode(76),
             modifiers: [.control, .option, .shift, .command]
         ).tokens
-        let bounds = NSRect(origin: .zero, size: view.intrinsicContentSize)
 
-        let frames = view.tokenFrames(in: bounds)
-
-        XCTAssertGreaterThan(bounds.width, 330)
-        XCTAssertEqual(frames.count, view.tokens.count)
-        XCTAssertLessThanOrEqual(try XCTUnwrap(frames.last).maxX, bounds.maxX)
+        XCTAssertEqual(view.intrinsicContentSize.width, promptWidth)
+        XCTAssertEqual(view.visibleLabel, prompt)
     }
 
     func testRecorderFocusDisplayStateTracksFirstResponder() {
@@ -961,23 +610,6 @@ final class ViewModelTests: XCTestCase {
     }
 }
 
-private final class GeneralPermissionSpy: PermissionServing {
-    var state: PermissionState
-    private(set) var accessibilityRequestCount = 0
-    private(set) var inputMonitoringRequestCount = 0
-    private(set) var openedSettings: [PrivacyKind] = []
-
-    init(state: PermissionState) {
-        self.state = state
-    }
-
-    func refresh(needsHID: Bool) -> PermissionState { state }
-    func requestAccessibility() { accessibilityRequestCount += 1 }
-    func requestInputMonitoring() { inputMonitoringRequestCount += 1 }
-    func openSettings(_ kind: PrivacyKind) { openedSettings.append(kind) }
-    func currentAccessibility() -> Bool { state.accessibility }
-}
-
 private final class AccessibilityNotificationSpy: AccessibilityNotificationPosting {
     private(set) var valueChangedElements: [NSView] = []
 
@@ -985,6 +617,7 @@ private final class AccessibilityNotificationSpy: AccessibilityNotificationPosti
         valueChangedElements.append(element)
     }
 }
+
 
 private final class MenuActionSpy: NSObject {
     private(set) var saveCount = 0

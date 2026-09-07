@@ -4,7 +4,6 @@ import SwiftUI
 enum OverallStatus: Equatable {
     case ready
     case accessibilityRequired
-    case inputMonitoringRequired
     case settingsError
 }
 
@@ -35,9 +34,8 @@ protocol PermissionServing: AnyObject {
     var state: PermissionState { get }
 
     @discardableResult
-    func refresh(needsHID: Bool) -> PermissionState
+    func refresh() -> PermissionState
     func requestAccessibility()
-    func requestInputMonitoring()
     func openSettings(_ kind: PrivacyKind)
     func currentAccessibility() -> Bool
 }
@@ -151,9 +149,6 @@ final class AppController: ObservableObject {
     var overallStatus: OverallStatus {
         if loadError != nil { return .settingsError }
         if !permissions.state.accessibility { return .accessibilityRequired }
-        if registration.values.contains(.inputMonitoringRequired) {
-            return .inputMonitoringRequired
-        }
         return .ready
     }
 
@@ -165,6 +160,10 @@ final class AppController: ObservableObject {
         menuBar.registeredCount
     }
 
+    var runtimeMacros: [MacroDefinition] {
+        runtime.macros
+    }
+
     private var menuBar: MenuBarViewModel {
         MenuBarViewModel(
             statuses: [overallStatus],
@@ -174,10 +173,6 @@ final class AppController: ObservableObject {
 
     var permissionState: PermissionState {
         permissions.state
-    }
-
-    var showsInputMonitoringActions: Bool {
-        settingsNeedHID(runtime) && permissions.state.inputMonitoring == false
     }
 
     init(
@@ -221,7 +216,7 @@ final class AppController: ObservableObject {
             loadError = nil
             saveError = nil
             showsReplaceWarning = false
-            refreshPermissions(for: value)
+            refreshPermissions(reconcileShortcuts: false)
             guard installPersistedSettings(value, updateDraft: true) else {
                 loadError = AppControllerError.shortcutCommitFailed
                 return
@@ -246,10 +241,6 @@ final class AppController: ObservableObject {
 
     func requestAccessibility() {
         permissions.requestAccessibility()
-    }
-
-    func requestInputMonitoring() {
-        permissions.requestInputMonitoring()
     }
 
     func openPrivacySettings(_ kind: PrivacyKind) {
@@ -281,15 +272,7 @@ final class AppController: ObservableObject {
     }
 
     func refreshPermissions(reconcileShortcuts: Bool = true) {
-        refreshPermissions(for: runtime)
-        if reconcileShortcuts {
-            self.reconcileShortcuts()
-        }
-    }
-
-    func refreshPermissions(forDraft draft: AppSettings, reconcileShortcuts: Bool) {
-        let needsHID = settingsNeedHID(runtime) || settingsNeedHID(draft)
-        _ = permissions.refresh(needsHID: needsHID)
+        _ = permissions.refresh()
         objectWillChange.send()
         if reconcileShortcuts {
             self.reconcileShortcuts()
@@ -314,14 +297,6 @@ final class AppController: ObservableObject {
             snapshotSettings: persisted,
             preservingRegistrationFailures: true
         )
-    }
-
-    private func refreshPermissions(for settings: AppSettings) {
-        _ = permissions.refresh(needsHID: settingsNeedHID(settings))
-    }
-
-    private func settingsNeedHID(_ settings: AppSettings) -> Bool {
-        settings.macros.contains { $0.isEnabled && $0.shortcut.isHIDOnly }
     }
 
     @discardableResult
@@ -356,7 +331,7 @@ final class AppController: ObservableObject {
     ) -> Bool {
         let retainedFailures = preservingRegistrationFailures
             ? registration.filter { id, state in
-                state == .registrationFailed
+                state != .registered
                     && candidate.states[id] == nil
                     && snapshotSettings.macros.contains(where: { $0.id == id })
             }

@@ -1,8 +1,34 @@
+import AppKit
 import XCTest
 @testable import Kocro
 
 @MainActor
 final class AppControllerTests: XCTestCase {
+    func testSettingsWindowActivationIsIdempotentAndSupportsReopening() {
+        let application = ActivationApplicationSpy()
+        let lifecycle = SettingsWindowActivationController(application: application)
+
+        lifecycle.windowDidOpen()
+        lifecycle.windowDidOpen()
+
+        XCTAssertEqual(application.policyChanges, [.regular])
+        XCTAssertEqual(application.activateCount, 1)
+
+        lifecycle.windowDidClose()
+        lifecycle.windowDidClose()
+
+        XCTAssertEqual(application.policyChanges, [.regular, .accessory])
+
+        lifecycle.windowDidOpen()
+        lifecycle.windowDidClose()
+
+        XCTAssertEqual(
+            application.policyChanges,
+            [.regular, .accessory, .regular, .accessory]
+        )
+        XCTAssertEqual(application.activateCount, 2)
+    }
+
     func testBadLoadDisablesRuntimeAndOnlyShowsReplacementWarningWhenSettingsOpen() {
         let store = StoreSpy(loadResult: .failure(StoreError.invalidFile))
         let shortcuts = ShortcutSpy()
@@ -19,7 +45,7 @@ final class AppControllerTests: XCTestCase {
 
         app.prepareSettingsDraft()
 
-        XCTAssertEqual(app.draft.macros.count, 12)
+        XCTAssertEqual(app.draft.macros.count, 8)
         XCTAssertTrue(app.showsReplaceWarning)
     }
 
@@ -201,7 +227,7 @@ final class AppControllerTests: XCTestCase {
         normalized.macros[1].isEnabled = false
         shortcuts.states = [
             successful.id: .registered,
-            conflicted.id: .registrationFailed,
+            conflicted.id: .conflict,
         ]
         shortcuts.nextCandidateSettings = normalized
         app.save()
@@ -209,7 +235,7 @@ final class AppControllerTests: XCTestCase {
         shortcuts.states = [:]
         app.refreshPermissions()
 
-        XCTAssertEqual(app.registration[conflicted.id], .registrationFailed)
+        XCTAssertEqual(app.registration[conflicted.id], .conflict)
     }
 
     func testLoadCollisionKeepsPersistedSettingsEnabledAndRefreshRetriesWithoutSaving() {
@@ -217,10 +243,7 @@ final class AppControllerTests: XCTestCase {
         let settings = AppSettings(macros: [macro])
         let store = StoreSpy(loadResult: .success(settings))
         let carbon = CarbonSpy(failingRegistration: 1)
-        let coordinator = ShortcutCoordinator(
-            carbon: carbon,
-            hid: HIDSpy(permission: true, starts: true)
-        )
+        let coordinator = ShortcutCoordinator(carbon: carbon)
         let app = AppController(
             store: store,
             shortcuts: coordinator,
@@ -255,10 +278,7 @@ final class AppControllerTests: XCTestCase {
         )
         let store = StoreSpy(loadResult: .success(.init(macros: [old])))
         let carbon = CarbonSpy()
-        let coordinator = ShortcutCoordinator(
-            carbon: carbon,
-            hid: HIDSpy(permission: true, starts: true)
-        )
+        let coordinator = ShortcutCoordinator(carbon: carbon)
         let queue = QueueSpy()
         let app = AppController(
             store: store,
@@ -292,10 +312,7 @@ final class AppControllerTests: XCTestCase {
         )
         let store = StoreSpy(loadResult: .success(.init(macros: [old])))
         let carbon = CarbonSpy()
-        let coordinator = ShortcutCoordinator(
-            carbon: carbon,
-            hid: HIDSpy(permission: true, starts: true)
-        )
+        let coordinator = ShortcutCoordinator(carbon: carbon)
         let queue = QueueSpy()
         let app = AppController(
             store: store,
@@ -331,10 +348,7 @@ final class AppControllerTests: XCTestCase {
         let edited = AppSettings(macros: [Fixtures.carbon(13)])
         let store = StoreSpy(loadResult: .success(old))
         let carbon = CarbonSpy()
-        let coordinator = ShortcutCoordinator(
-            carbon: carbon,
-            hid: HIDSpy(permission: true, starts: true)
-        )
+        let coordinator = ShortcutCoordinator(carbon: carbon)
         let app = AppController(
             store: store,
             shortcuts: coordinator,
@@ -388,7 +402,7 @@ final class AppControllerTests: XCTestCase {
     func testTriggerChecksCurrentAccessibilityInsteadOfCachedPermissionState() {
         let value = Fixtures.settings(text: "secret")
         let permissions = PermissionSpy(
-            state: .init(accessibility: true, inputMonitoring: nil),
+            state: .init(accessibility: true),
             currentAccessibility: false
         )
         let queue = QueueSpy()
@@ -408,26 +422,25 @@ final class AppControllerTests: XCTestCase {
         XCTAssertEqual(permissions.currentAccessibilityChecks, 1)
     }
 
-    func testRefreshPermissionsReconcilesRegistrationAndStatus() {
-        let value = AppSettings(macros: [Fixtures.hid(21)])
+    func testRefreshPermissionsReconcilesRegistrationWithAccessibilityOnly() {
+        let value = AppSettings(macros: [Fixtures.carbon(13)])
         let permissions = PermissionSpy(
-            state: .init(accessibility: true, inputMonitoring: false),
+            state: .init(accessibility: true),
             currentAccessibility: true
         )
-        let shortcuts = ShortcutSpy(states: [value.macros[0].id: .inputMonitoringRequired])
+        let shortcuts = ShortcutSpy(states: [value.macros[0].id: .registrationFailed])
         let app = makeApp(
             store: StoreSpy(loadResult: .success(value)),
             shortcuts: shortcuts,
             permissions: permissions
         )
         app.start()
-        XCTAssertEqual(app.overallStatus, .inputMonitoringRequired)
+        XCTAssertEqual(app.overallStatus, .ready)
         shortcuts.states = [value.macros[0].id: .registered]
-        permissions.refreshedState = .init(accessibility: true, inputMonitoring: true)
+        permissions.refreshedState = .init(accessibility: true)
 
         app.refreshPermissions()
 
-        XCTAssertEqual(permissions.refreshNeedsHID, [true, true])
         XCTAssertEqual(shortcuts.replaceCalls, [value.macros, value.macros])
         XCTAssertEqual(app.registration[value.macros[0].id], .registered)
         XCTAssertEqual(app.overallStatus, .ready)
@@ -499,5 +512,19 @@ final class AppControllerTests: XCTestCase {
             permissions: permissions,
             queue: queue
         )
+    }
+}
+
+private final class ActivationApplicationSpy: ApplicationActivating {
+    private(set) var policyChanges: [NSApplication.ActivationPolicy] = []
+    private(set) var activateCount = 0
+
+    func setActivationPolicy(_ policy: NSApplication.ActivationPolicy) -> Bool {
+        policyChanges.append(policy)
+        return true
+    }
+
+    func activate() {
+        activateCount += 1
     }
 }

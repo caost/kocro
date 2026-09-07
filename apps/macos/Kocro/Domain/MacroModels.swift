@@ -21,18 +21,9 @@ struct ShortcutDefinition: Codable, Hashable, Sendable {
     var key: ShortcutKey
     var modifiers: ModifierSet
 
-    var isHIDOnly: Bool {
-        if case .function(let number) = key {
-            return (21...24).contains(number) && modifiers.isEmpty
-        }
-        return false
-    }
-
-    var functionNumber: Int? {
-        if case .function(let number) = key {
-            return number
-        }
-        return nil
+    var usesRemovedFunctionKey: Bool {
+        guard case .function(let number) = key else { return false }
+        return MacKeyCodePolicy.removedLegacyFunctionNumbers.contains(number)
     }
 
     var displayName: String {
@@ -73,7 +64,7 @@ struct ShortcutDefinition: Codable, Hashable, Sendable {
         guard modifiers.rawValue & ~ModifierSet.supported.rawValue == 0 else {
             return nil
         }
-        let registrationKey: ShortcutRegistrationKey
+        let registrationKeyCode: UInt16
         switch key {
         case .empty:
             return nil
@@ -81,33 +72,24 @@ struct ShortcutDefinition: Codable, Hashable, Sendable {
             guard let keyCode = MacKeyCodePolicy.keyCode(forLetter: letter) else {
                 return nil
             }
-            registrationKey = .carbon(keyCode)
+            registrationKeyCode = keyCode
         case .keyCode(let keyCode):
-            registrationKey = .carbon(keyCode)
-        case .function(let number) where (1...20).contains(number):
+            registrationKeyCode = keyCode
+        case .function(let number):
             guard let keyCode = MacKeyCodePolicy.keyCode(forFunction: number) else {
                 return nil
             }
-            registrationKey = .carbon(keyCode)
-        case .function(let number) where (21...24).contains(number):
-            registrationKey = .hidFunction(number)
-        case .function:
-            return nil
+            registrationKeyCode = keyCode
         }
         return ShortcutRegistrationIdentity(
-            key: registrationKey,
+            keyCode: registrationKeyCode,
             modifiers: modifiers
         )
     }
 }
 
-enum ShortcutRegistrationKey: Hashable, Sendable {
-    case carbon(UInt16)
-    case hidFunction(Int)
-}
-
 struct ShortcutRegistrationIdentity: Hashable, Sendable {
-    let key: ShortcutRegistrationKey
+    let keyCode: UInt16
     let modifiers: ModifierSet
 }
 
@@ -152,6 +134,17 @@ struct MacroDefinition: Codable, Equatable, Identifiable, Sendable {
         title.isEmpty ? "이름 없는 매크로" : title
     }
 
+    var settingsDisplayTitle: String {
+        if !title.isEmpty { return title }
+        let firstLine = text.split(
+            separator: "\n",
+            omittingEmptySubsequences: false
+        ).first ?? ""
+        let value = String(firstLine.prefix(10))
+        if value.isEmpty { return "새 매크로" }
+        return firstLine.count > 10 ? value + "…" : value
+    }
+
     static func newDraft() -> Self {
         Self(
             id: UUID(),
@@ -174,7 +167,7 @@ struct AppSettings: Codable, Equatable, Sendable {
     var macros: [MacroDefinition]
 
     static let defaults = Self(
-        macros: (13...24).enumerated().map { index, functionNumber in
+        macros: MacKeyCodePolicy.standaloneFunctionNumbers.enumerated().map { index, functionNumber in
             MacroDefinition(
                 id: UUID(),
                 title: "매크로 \(index + 1)",

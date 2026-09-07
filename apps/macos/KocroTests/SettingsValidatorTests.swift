@@ -4,12 +4,60 @@ import XCTest
 final class SettingsValidatorTests: XCTestCase {
     let validator = SettingsValidator()
 
+    func testRejectsCommonCommandShortcutsBeforeCarbonRegistration() {
+        let reservedKeys: [UInt16] = [
+            0, 1, 3, 4, 5, 6, 7, 8, 9, 12, 13, 31, 35, 43, 45, 46,
+        ]
+
+        for keyCode in reservedKeys {
+            XCTAssertThrowsError(
+                try validator.validateShortcut(
+                    .init(key: .keyCode(keyCode), modifiers: .command)
+                )
+            ) { error in
+                guard case ValidationError.reservedShortcut = error else {
+                    return XCTFail("expected reservedShortcut, got \(error)")
+                }
+            }
+        }
+
+        XCTAssertNoThrow(
+            try validator.validateShortcut(
+                .init(key: .keyCode(8), modifiers: [.control, .option])
+            )
+        )
+        XCTAssertThrowsError(
+            try validator.validateShortcut(
+                .init(key: .letter("c"), modifiers: .command)
+            )
+        )
+    }
+
+    func testDefaultsAndValidationExcludeF21ThroughF24ExecutionShortcuts() {
+        XCTAssertEqual(
+            AppSettings.defaults.macros.map(\.shortcut.key),
+            (13...20).map { .function($0) }
+        )
+        for number in 21...24 {
+            XCTAssertThrowsError(
+                try validator.validateShortcut(
+                    .init(key: .function(number), modifiers: [])
+                )
+            )
+            var inactive = MacroDefinition.newDraft()
+            inactive.shortcut = .init(key: .function(number), modifiers: [])
+            XCTAssertThrowsError(
+                try validator.validate(.init(macros: [inactive]))
+            )
+        }
+    }
+
     func testDefaultsAndOrder() throws {
         let value = AppSettings.defaults
 
-        XCTAssertEqual(value.macros.map(\.shortcut.key), (13...24).map { .function($0) })
-        XCTAssertEqual(value.macros.map(\.title), (1...12).map { "매크로 \($0)" })
-        XCTAssertEqual(Set(value.macros.map(\.id)).count, 12)
+        XCTAssertEqual(value.macros.map(\.shortcut.key), (13...20).map { .function($0) })
+        XCTAssertEqual(value.macros.map(\.title), (1...8).map { "매크로 \($0)" })
+        XCTAssertEqual(Set(value.macros.map(\.id)).count, 8)
         XCTAssertTrue(value.macros.allSatisfy { !$0.isEnabled && $0.text.isEmpty })
         XCTAssertNoThrow(try validator.validate(value))
 
@@ -69,7 +117,7 @@ final class SettingsValidatorTests: XCTestCase {
     }
 
     func testDuplicateShortcutUsesCanonicalRegistrationIdentity() {
-        let values = ["a", "A"].map { letter in
+        let values = ["b", "B"].map { letter in
             MacroDefinition(
                 id: UUID(),
                 isEnabled: true,
@@ -81,13 +129,17 @@ final class SettingsValidatorTests: XCTestCase {
             MacroDefinition(
                 id: UUID(),
                 isEnabled: true,
-                shortcut: .init(key: .keyCode(0), modifiers: .command),
+                shortcut: .init(key: .keyCode(11), modifiers: .command),
                 text: "x",
                 trailingKey: nil
             )
         ]
 
-        XCTAssertThrowsError(try validator.validate(.init(macros: values)))
+        XCTAssertThrowsError(try validator.validate(.init(macros: values))) { error in
+            guard case ValidationError.duplicateShortcut = error else {
+                return XCTFail("expected duplicateShortcut, got \(error)")
+            }
+        }
     }
 
     func testRegistrationIdentityRejectsUnsupportedModifierBits() {
@@ -104,7 +156,7 @@ final class SettingsValidatorTests: XCTestCase {
             try validator.validateShortcut(.init(key: .letter("a"), modifiers: []))
         )
         XCTAssertNoThrow(
-            try validator.validateShortcut(.init(key: .letter("a"), modifiers: [.command]))
+            try validator.validateShortcut(.init(key: .letter("b"), modifiers: [.command]))
         )
         XCTAssertThrowsError(
             try validator.validateShortcut(.init(key: .letter("1"), modifiers: [.command]))
@@ -119,24 +171,20 @@ final class SettingsValidatorTests: XCTestCase {
             try validator.validateShortcut(.init(key: .function(1), modifiers: []))
         )
 
-        for number in 13...24 {
-            XCTAssertNoThrow(
-                try validator.validateShortcut(.init(key: .function(number), modifiers: []))
-            )
-        }
         for number in 13...20 {
             XCTAssertNoThrow(
+                try validator.validateShortcut(.init(key: .function(number), modifiers: []))
+            )
+            XCTAssertNoThrow(
                 try validator.validateShortcut(.init(key: .function(number), modifiers: [.shift]))
             )
         }
-        for number in 21...24 {
-            XCTAssertThrowsError(
-                try validator.validateShortcut(.init(key: .function(number), modifiers: [.shift]))
-            )
-        }
-        for number in 25...35 {
+        for number in 21...35 {
             XCTAssertThrowsError(
                 try validator.validateShortcut(.init(key: .function(number), modifiers: []))
+            )
+            XCTAssertThrowsError(
+                try validator.validateShortcut(.init(key: .function(number), modifiers: [.shift]))
             )
         }
 

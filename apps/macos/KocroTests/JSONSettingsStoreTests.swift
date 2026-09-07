@@ -3,6 +3,63 @@ import XCTest
 @testable import Kocro
 
 final class JSONSettingsStoreTests: XCTestCase {
+    func testReservedShortcutLoadMigrationDisablesAndPreservesMacro() throws {
+        let before = MacroDefinition(
+            id: UUID(),
+            title: "기존 복사 단축키",
+            isEnabled: true,
+            shortcut: .init(key: .keyCode(8), modifiers: .command),
+            text: "보존할 문자열",
+            trailingKey: .enter
+        )
+        let file = MemorySettingsFile(
+            contents: try JSONEncoder().encode(AppSettings(macros: [before]))
+        )
+        let store = JSONSettingsStore(file: file, validator: .init())
+
+        let loaded = try store.load()
+
+        XCTAssertEqual(loaded.macros[0].id, before.id)
+        XCTAssertEqual(loaded.macros[0].title, before.title)
+        XCTAssertEqual(loaded.macros[0].shortcut, before.shortcut)
+        XCTAssertEqual(loaded.macros[0].text, before.text)
+        XCTAssertEqual(loaded.macros[0].trailingKey, before.trailingKey)
+        XCTAssertFalse(loaded.macros[0].isEnabled)
+    }
+
+    func testF21ThroughF24LoadMigrationPreservesMacroContentAndOrder() throws {
+        let before = AppSettings(macros: [
+            Fixtures.carbon(13),
+            MacroDefinition(
+                id: UUID(),
+                title: "기존 F21",
+                isEnabled: true,
+                shortcut: .init(key: .function(21), modifiers: []),
+                text: "보존할 문자열",
+                trailingKey: .custom(keyCode: 0, modifiers: .shift)
+            ),
+            Fixtures.carbon(14),
+        ])
+        let file = MemorySettingsFile(contents: try JSONEncoder().encode(before))
+        let store = JSONSettingsStore(file: file, validator: .init())
+
+        let loaded = try store.load()
+
+        XCTAssertEqual(loaded.macros.map(\.id), before.macros.map(\.id))
+        XCTAssertEqual(loaded.macros[1].title, "기존 F21")
+        XCTAssertEqual(loaded.macros[1].text, "보존할 문자열")
+        XCTAssertEqual(
+            loaded.macros[1].trailingKey,
+            .custom(keyCode: 0, modifiers: .shift)
+        )
+        XCTAssertFalse(loaded.macros[1].isEnabled)
+        XCTAssertEqual(
+            loaded.macros[1].shortcut,
+            .init(key: .empty, modifiers: [])
+        )
+        XCTAssertEqual(loaded.macros[0].shortcut, before.macros[0].shortcut)
+        XCTAssertEqual(loaded.macros[2].shortcut, before.macros[2].shortcut)
+    }
     func testLegacyMacrosWithoutTitlesMigrateByOrderAndWriteTitlesOnNextSave() throws {
         let firstID = UUID()
         let secondID = UUID()
@@ -162,14 +219,14 @@ final class JSONSettingsStoreTests: XCTestCase {
                 MacroDefinition(
                     id: UUID(),
                     isEnabled: true,
-                    shortcut: .init(key: .letter("A"), modifiers: .command),
+                    shortcut: .init(key: .letter("B"), modifiers: .command),
                     text: "x",
                     trailingKey: nil
                 ),
                 MacroDefinition(
                     id: UUID(),
                     isEnabled: true,
-                    shortcut: .init(key: .keyCode(0), modifiers: .command),
+                    shortcut: .init(key: .keyCode(11), modifiers: .command),
                     text: "y",
                     trailingKey: nil
                 ),

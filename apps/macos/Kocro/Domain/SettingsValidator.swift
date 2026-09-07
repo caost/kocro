@@ -8,7 +8,7 @@ enum ValidationError: Error {
     case modifierRequired
     case unsupportedFunction
     case unsupportedModifiers
-    case hidOnlyKeyRejectsModifiers
+    case reservedShortcut
     case duplicateShortcut
     case invalidTrailing
 }
@@ -34,6 +34,9 @@ struct SettingsValidator {
         if macro.text.count > MacroDefinition.maximumTextCount {
             issues.append(.textTooLong)
         }
+        if macro.shortcut.usesRemovedFunctionKey {
+            issues.append(.unsupportedFunction)
+        }
         guard macro.isEnabled else {
             return issues
         }
@@ -44,7 +47,9 @@ struct SettingsValidator {
         if macro.text.isEmpty {
             issues.append(.emptyText)
         }
-        issues.append(contentsOf: thrownIssue { try validateShortcut(macro.shortcut) })
+        if !macro.shortcut.usesRemovedFunctionKey {
+            issues.append(contentsOf: thrownIssue { try validateShortcut(macro.shortcut) })
+        }
 
         guard let identity = macro.shortcut.registrationIdentity else {
             issues.append(.duplicateShortcut)
@@ -86,15 +91,15 @@ struct SettingsValidator {
                 throw ValidationError.modifierRequired
             }
         case .function(let number):
-            guard (1...24).contains(number) else {
+            guard MacKeyCodePolicy.supportedFunctionNumbers.contains(number) else {
                 throw ValidationError.unsupportedFunction
             }
-            if number <= 12, shortcut.modifiers.isEmpty {
+            if MacKeyCodePolicy.shortcutRequiresModifiers(shortcut.key), shortcut.modifiers.isEmpty {
                 throw ValidationError.modifierRequired
             }
-            if (21...24).contains(number), !shortcut.modifiers.isEmpty {
-                throw ValidationError.hidOnlyKeyRejectsModifiers
-            }
+        }
+        if ReservedShortcutPolicy.contains(shortcut) {
+            throw ValidationError.reservedShortcut
         }
     }
 
@@ -116,5 +121,36 @@ struct SettingsValidator {
         guard modifiers.rawValue & ~ModifierSet.supported.rawValue == 0 else {
             throw ValidationError.unsupportedModifiers
         }
+    }
+}
+
+enum ReservedShortcutPolicy {
+    /// AppKit 앱의 편집·파일·윈도우 메뉴에서 공통으로 쓰는 Command 단축키다.
+    /// 앱별 단축키까지 추측해 막지 않도록 보조 키가 정확히 Command일 때만 적용한다.
+    private static let commandKeyCodes: Set<UInt16> = [
+        0,  // A: 전체 선택
+        1,  // S: 저장
+        3,  // F: 찾기
+        4,  // H: 가리기
+        5,  // G: 다음 찾기
+        6,  // Z: 실행 취소
+        7,  // X: 오려두기
+        8,  // C: 복사
+        9,  // V: 붙여넣기
+        12, // Q: 종료
+        13, // W: 윈도우 닫기
+        31, // O: 열기
+        35, // P: 프린트
+        43, // comma: 설정
+        45, // N: 새 문서
+        46, // M: 최소화
+    ]
+
+    static func contains(_ shortcut: ShortcutDefinition) -> Bool {
+        guard shortcut.modifiers == .command,
+              let identity = shortcut.registrationIdentity else {
+            return false
+        }
+        return commandKeyCodes.contains(identity.keyCode)
     }
 }
