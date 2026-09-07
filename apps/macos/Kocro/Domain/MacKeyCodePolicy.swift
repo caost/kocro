@@ -1,5 +1,16 @@
 import Foundation
 
+struct TokenEntry: Equatable {
+    let canonical: String
+    let aliases: Set<String>
+    let key: ShortcutKey
+
+    func matches(_ token: String) -> Bool {
+        let value = token.uppercased()
+        return value == canonical || aliases.contains(value)
+    }
+}
+
 enum MacKeyCodePolicy {
     private static let letterKeyCodes: [String: UInt16] = [
         "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6,
@@ -68,6 +79,42 @@ enum MacKeyCodePolicy {
         keyNames[keyCode] ?? "Key \(keyCode)"
     }
 
+    static func tokenEntries(mode: TokenEditorMode) -> [TokenEntry] {
+        var keyCodes = characterKeys
+            .union(keypadKeys)
+            .union(mode == .shortcut ? shortcutEditingKeys : editingAndNavigationKeys)
+        if mode == .trailing {
+            keyCodes.formUnion(functionNumbersByKeyCode.keys)
+        }
+
+        var entries = keyCodes.compactMap { keyCode -> TokenEntry? in
+            if let number = functionNumbersByKeyCode[keyCode] {
+                return TokenEntry(
+                    canonical: "{KC_F\(number)}",
+                    aliases: [],
+                    key: .function(number)
+                )
+            }
+            guard let tokenName = tokenNames[keyCode] else { return nil }
+            return TokenEntry(
+                canonical: "{KC_\(tokenName)}",
+                aliases: [],
+                key: .keyCode(keyCode)
+            )
+        }
+        if mode == .shortcut {
+            entries.append(contentsOf: (1...24).map { number in
+                TokenEntry(
+                    canonical: "{KC_F\(number)}",
+                    aliases: [],
+                    key: .function(number)
+                )
+            })
+        }
+        return Dictionary(grouping: entries, by: \.canonical)
+            .compactMap(\.value.first)
+    }
+
     private static let keyNames: [UInt16: String] = [
         0: "A", 1: "S", 2: "D", 3: "F", 4: "H", 5: "G", 6: "Z",
         7: "X", 8: "C", 9: "V", 10: "§", 11: "B", 12: "Q", 13: "W",
@@ -85,5 +132,23 @@ enum MacKeyCodePolicy {
         94: "_", 95: "Keypad ,", 114: "Help", 115: "Home", 116: "Page Up",
         117: "Delete", 119: "End", 121: "Page Down", 123: "Left Arrow",
         124: "Right Arrow", 125: "Down Arrow", 126: "Up Arrow",
+    ]
+
+    private static let tokenNames: [UInt16: String] = [
+        0: "A", 1: "S", 2: "D", 3: "F", 4: "H", 5: "G", 6: "Z",
+        7: "X", 8: "C", 9: "V", 10: "NUHS", 11: "B", 12: "Q", 13: "W",
+        14: "E", 15: "R", 16: "Y", 17: "T", 18: "1", 19: "2", 20: "3",
+        21: "4", 22: "6", 23: "5", 24: "EQUAL", 25: "9", 26: "7",
+        27: "MINUS", 28: "8", 29: "0", 30: "RBRC", 31: "O", 32: "U",
+        33: "LBRC", 34: "I", 35: "P", 36: "ENTER", 37: "L", 38: "J",
+        39: "QUOT", 40: "K", 41: "SCLN", 42: "BSLS", 43: "COMM", 44: "SLSH",
+        45: "N", 46: "M", 47: "DOT", 48: "TAB", 49: "SPACE", 50: "GRV",
+        51: "BSPC", 53: "ESC", 65: "KP_DOT", 67: "KP_ASTERISK", 69: "KP_PLUS",
+        71: "KP_CLEAR", 75: "KP_SLASH", 76: "KP_ENTER", 78: "KP_MINUS",
+        81: "KP_EQUAL", 82: "KP_0", 83: "KP_1", 84: "KP_2", 85: "KP_3",
+        86: "KP_4", 87: "KP_5", 88: "KP_6", 89: "KP_7", 91: "KP_8",
+        92: "KP_9", 93: "JYEN", 94: "RO", 95: "KP_COMMA", 114: "HELP",
+        115: "HOME", 116: "PGUP", 117: "DEL", 119: "END", 121: "PGDN",
+        123: "LEFT", 124: "RIGHT", 125: "DOWN", 126: "UP",
     ]
 }

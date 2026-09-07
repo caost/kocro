@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 enum SettingsSection: String, CaseIterable, Identifiable {
@@ -14,6 +15,11 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     }
 }
 
+enum TokenField: Hashable {
+    case shortcut(UUID)
+    case trailing(UUID)
+}
+
 @MainActor
 final class SettingsViewModel: ObservableObject {
     @Published var settings: AppSettings {
@@ -26,21 +32,29 @@ final class SettingsViewModel: ObservableObject {
     @Published var registration: [UUID: RegistrationState] = [:]
     @Published var selectedSection: SettingsSection = .macros
     @Published private(set) var isDirty = false
+    @Published private(set) var tokenDrafts: [TokenField: TokenEditorDraft]
 
     let validator: SettingsValidator
     var onSave: ((AppSettings) -> Void)?
 
     private var hasLoadedDraft: Bool
     private var isLoadingDraft = false
+    private var savedSettings: AppSettings
 
     init(settings: AppSettings, validator: SettingsValidator) {
         self.settings = settings
         self.validator = validator
+        savedSettings = settings
+        tokenDrafts = Self.makeTokenDrafts(for: settings)
         hasLoadedDraft = !settings.macros.isEmpty
     }
 
     func add() {
-        settings.macros.append(.newDraft())
+        let macro = MacroDefinition.newDraft()
+        settings.macros.append(macro)
+        tokenDrafts[.shortcut(macro.id)] = Self.shortcutDraft(for: macro)
+        tokenDrafts[.trailing(macro.id)] = Self.trailingDraft(for: macro)
+        recomputeDirty()
     }
 
     func delete(at offsets: IndexSet) {
@@ -49,6 +63,45 @@ final class SettingsViewModel: ObservableObject {
 
     func move(from offsets: IndexSet, to destination: Int) {
         settings.macros.move(fromOffsets: offsets, toOffset: destination)
+    }
+
+    func tokenDraft(for field: TokenField) -> TokenEditorDraft {
+        tokenDrafts[field]!
+    }
+
+    func updateTokenText(_ text: String, for field: TokenField) {
+        tokenDrafts[field]!.updateText(text)
+        recomputeDirty()
+    }
+
+    func mutateTokenDraft(
+        _ field: TokenField,
+        _ body: (inout TokenEditorDraft) -> Void
+    ) {
+        body(&tokenDrafts[field]!)
+        recomputeDirty()
+    }
+
+    func collapsedShortcutText(for id: UUID) -> String {
+        tokenDrafts[.shortcut(id)]?.text ?? ""
+    }
+
+    @discardableResult
+    func prepareTokenEditsForSave() -> Bool {
+        for index in settings.macros.indices {
+            let id = settings.macros[index].id
+            let shortcutField = TokenField.shortcut(id)
+            let trailingField = TokenField.trailing(id)
+            guard commitTokenDraft(shortcutField),
+                  commitTokenDraft(trailingField) else {
+                recomputeDirty()
+                return false
+            }
+            apply(tokenDrafts[shortcutField]!.value, at: index)
+            apply(tokenDrafts[trailingField]!.value, at: index)
+        }
+        recomputeDirty()
+        return true
     }
 
     func characterCount(for id: UUID) -> Int? {
@@ -86,6 +139,10 @@ final class SettingsViewModel: ObservableObject {
     }
 
     func save() {
+        guard prepareTokenEditsForSave() else {
+            saveErrorMessage = "표시된 토큰 오류를 수정하세요"
+            return
+        }
         do {
             _ = try validator.validate(settings)
         } catch {
@@ -102,6 +159,8 @@ final class SettingsViewModel: ObservableObject {
         guard app.loadError == nil || app.showsReplaceWarning else { return }
         isLoadingDraft = true
         settings = app.draft
+        tokenDrafts = Self.makeTokenDrafts(for: settings)
+        savedSettings = settings
         isLoadingDraft = false
         hasLoadedDraft = true
         isDirty = false
@@ -119,6 +178,8 @@ final class SettingsViewModel: ObservableObject {
     func markSaved(_ value: AppSettings) {
         isLoadingDraft = true
         settings = value
+        tokenDrafts = Self.makeTokenDrafts(for: value)
+        savedSettings = value
         isLoadingDraft = false
         hasLoadedDraft = true
         isDirty = false
@@ -136,6 +197,43 @@ final class SettingsViewModel: ObservableObject {
         case .hidStartFailed:
             return "F21~F24 모니터를 시작하지 못했습니다"
         }
+    }
+
+    private func commitTokenDraft(_ field: TokenField) -> Bool {
+        tokenDrafts[field]!.commit()
+    }
+
+    private func apply(_ value: TokenStoredValue, at index: Int) {
+        switch value {
+        case .shortcut(let shortcut):
+            settings.macros[index].shortcut = shortcut
+        case .trailing(let trailingKey):
+            settings.macros[index].trailingKey = trailingKey
+        }
+    }
+
+    private func recomputeDirty() {
+        isDirty = settings != savedSettings
+            || tokenDrafts.values.contains(where: \.isDirty)
+    }
+
+    private static func makeTokenDrafts(
+        for settings: AppSettings
+    ) -> [TokenField: TokenEditorDraft] {
+        var drafts: [TokenField: TokenEditorDraft] = [:]
+        for macro in settings.macros {
+            drafts[.shortcut(macro.id)] = shortcutDraft(for: macro)
+            drafts[.trailing(macro.id)] = trailingDraft(for: macro)
+        }
+        return drafts
+    }
+
+    private static func shortcutDraft(for macro: MacroDefinition) -> TokenEditorDraft {
+        TokenEditorDraft(value: .shortcut(macro.shortcut), mode: .shortcut)
+    }
+
+    private static func trailingDraft(for macro: MacroDefinition) -> TokenEditorDraft {
+        TokenEditorDraft(value: .trailing(macro.trailingKey), mode: .trailing)
     }
 }
 
@@ -217,7 +315,11 @@ struct SettingsView: View {
 
             List {
                 ForEach($model.settings.macros) { $macro in
-                    MacroRow(macro: $macro, errors: model.errors(for: macro.id))
+                    MacroRow(
+                        macro: $macro,
+                        model: model,
+                        errors: model.errors(for: macro.id)
+                    )
                 }
                 .onDelete(perform: model.delete)
                 .onMove(perform: model.move)
@@ -298,8 +400,200 @@ struct MacroRecorderAccessibilityLabels: Equatable {
     }
 }
 
+private struct TokenEditor: View {
+    let field: TokenField
+    @ObservedObject var model: SettingsViewModel
+    let accessibilityLabel: String
+
+    private var draft: TokenEditorDraft { model.tokenDraft(for: field) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                TokenTextField(
+                    text: Binding(
+                        get: { draft.text },
+                        set: { model.updateTokenText($0, for: field) }
+                    ),
+                    accessibilityLabel: accessibilityLabel,
+                    hasCompletions: { !draft.completions.isEmpty },
+                    onCommit: commit,
+                    onMoveCompletion: moveCompletion,
+                    onAcceptCompletion: acceptCompletion
+                )
+                .frame(minWidth: 220, minHeight: 26)
+
+                KeyRecorder(
+                    shortcut: recordedShortcut,
+                    prompt: "키로 기록",
+                    mode: mode == .shortcut ? .shortcut : .trailing,
+                    accessibilityLabel: "\(accessibilityLabel) 키로 기록"
+                )
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(height: 26)
+
+                if mode == .shortcut {
+                    Menu("F21~F24 선택") {
+                        ForEach(21...24, id: \.self) { number in
+                            Button("F\(number)") {
+                                model.mutateTokenDraft(field) {
+                                    $0.selectToken("{KC_F\(number)}")
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Button("지우기") {
+                        model.mutateTokenDraft(field) { $0.clear() }
+                    }
+                }
+            }
+
+            if !draft.completions.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(Array(draft.completions.enumerated()), id: \.offset) { index, token in
+                        Button(token) {
+                            model.mutateTokenDraft(field) {
+                                $0.acceptCompletion(at: index)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 4)
+                        .background(
+                            index == draft.selectedCompletion
+                                ? Color.accentColor.opacity(0.2)
+                                : Color.clear
+                        )
+                        .accessibilityValue(
+                            index == draft.selectedCompletion ? "선택됨" : ""
+                        )
+                    }
+                }
+                .padding(4)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(Color.secondary.opacity(0.3))
+                )
+            }
+
+            ForEach(Array(draft.issues.enumerated()), id: \.offset) { _, issue in
+                Text(issue.message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .accessibilityLabel("\(accessibilityLabel) 오류: \(issue.message)")
+            }
+
+            Text("macOS가 먼저 처리한 조합은 토큰으로 직접 입력하세요.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var mode: TokenEditorMode {
+        switch field {
+        case .shortcut: return .shortcut
+        case .trailing: return .trailing
+        }
+    }
+
+    private var recordedShortcut: Binding<ShortcutDefinition> {
+        Binding(
+            get: {
+                switch draft.value {
+                case .shortcut(let shortcut):
+                    return shortcut
+                case .trailing(let trailingKey):
+                    return ShortcutDefinition(trailingKey: trailingKey)
+                }
+            },
+            set: { shortcut in
+                model.mutateTokenDraft(field) { $0.applyRecorded(shortcut) }
+            }
+        )
+    }
+
+    private func commit() {
+        model.mutateTokenDraft(field) { _ = $0.commit() }
+    }
+
+    private func moveCompletion(_ move: CompletionMove) {
+        model.mutateTokenDraft(field) { $0.moveCompletion(move) }
+    }
+
+    private func acceptCompletion() {
+        model.mutateTokenDraft(field) { $0.acceptCompletion() }
+    }
+}
+
+private struct TokenTextField: NSViewRepresentable {
+    @Binding var text: String
+    let accessibilityLabel: String
+    let hasCompletions: () -> Bool
+    let onCommit: () -> Void
+    let onMoveCompletion: (CompletionMove) -> Void
+    let onAcceptCompletion: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeNSView(context: Context) -> NSTextField {
+        let textField = NSTextField(string: text)
+        textField.delegate = context.coordinator
+        textField.placeholderString = "{KC_CMD}+{KC_F13}"
+        textField.setAccessibilityLabel(accessibilityLabel)
+        return textField
+    }
+
+    func updateNSView(_ nsView: NSTextField, context: Context) {
+        context.coordinator.parent = self
+        if nsView.stringValue != text {
+            nsView.stringValue = text
+        }
+        nsView.setAccessibilityLabel(accessibilityLabel)
+    }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: TokenTextField
+
+        init(parent: TokenTextField) {
+            self.parent = parent
+        }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let textField = notification.object as? NSTextField else { return }
+            parent.text = textField.stringValue
+        }
+
+        func controlTextDidEndEditing(_ notification: Notification) {
+            parent.onCommit()
+        }
+
+        func control(
+            _ control: NSControl,
+            textView: NSTextView,
+            doCommandBy commandSelector: Selector
+        ) -> Bool {
+            guard parent.hasCompletions() else { return false }
+            switch commandSelector {
+            case #selector(NSResponder.moveUp(_:)):
+                parent.onMoveCompletion(.up)
+            case #selector(NSResponder.moveDown(_:)):
+                parent.onMoveCompletion(.down)
+            case #selector(NSResponder.insertNewline(_:)),
+                 #selector(NSResponder.insertTab(_:)):
+                parent.onAcceptCompletion()
+            default:
+                return false
+            }
+            return true
+        }
+    }
+}
+
 private struct MacroRow: View {
     @Binding var macro: MacroDefinition
+    @ObservedObject var model: SettingsViewModel
     let errors: [String]
 
     var body: some View {
@@ -310,26 +604,10 @@ private struct MacroRow: View {
                     .accessibilityLabel(macro.displayTitle)
                 Toggle("활성화", isOn: $macro.isEnabled)
                     .toggleStyle(.checkbox)
-                HStack(spacing: 6) {
-                    KeyRecorder(
-                        shortcut: $macro.shortcut,
-                        accessibilityLabel: recorderAccessibilityLabels.shortcut
-                    )
-                        .fixedSize(horizontal: true, vertical: false)
-                        .frame(height: 26)
-                    Picker("F21~F24", selection: hidFunctionBinding) {
-                        Text("F21~F24").tag(0)
-                        ForEach(21...24, id: \.self) { number in
-                            Text("F\(number)").tag(number)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(width: 100)
-                }
-                .padding(4)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.secondary.opacity(0.3))
+                TokenEditor(
+                    field: .shortcut(macro.id),
+                    model: model,
+                    accessibilityLabel: recorderAccessibilityLabels.shortcut
                 )
                 Spacer()
                 Text(String(macro.id.uuidString.prefix(8)))
@@ -350,27 +628,11 @@ private struct MacroRow: View {
                     macro.text.count > MacroDefinition.maximumTextCount ? .red : .secondary
                 )
 
-            HStack {
-                Picker("후속 키", selection: trailingModeBinding) {
-                    ForEach(TrailingMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
-                    }
-                }
-                .frame(width: 180)
-                if trailingModeBinding.wrappedValue == .custom {
-                    KeyRecorder(
-                        shortcut: trailingShortcutBinding,
-                        prompt: "후속 키 입력",
-                        mode: .trailing,
-                        accessibilityLabel: recorderAccessibilityLabels.trailing
-                    )
-                        .fixedSize(horizontal: true, vertical: false)
-                        .frame(height: 26)
-                    Button("지우기") {
-                        macro.trailingKey = nil
-                    }
-                }
-            }
+            TokenEditor(
+                field: .trailing(macro.id),
+                model: model,
+                accessibilityLabel: recorderAccessibilityLabels.trailing
+            )
 
             ForEach(errors, id: \.self) { error in
                 Text(error)
@@ -385,82 +647,4 @@ private struct MacroRow: View {
         MacroRecorderAccessibilityLabels(macro)
     }
 
-    private var hidFunctionBinding: Binding<Int> {
-        Binding(
-            get: {
-                guard let number = macro.shortcut.functionNumber,
-                      (21...24).contains(number) else { return 0 }
-                return number
-            },
-            set: { number in
-                macro.shortcut = number == 0
-                    ? .init(key: .empty, modifiers: [])
-                    : .init(key: .function(number), modifiers: [])
-            }
-        )
-    }
-
-    private var trailingModeBinding: Binding<TrailingMode> {
-        Binding(
-            get: { TrailingMode(macro.trailingKey) },
-            set: { mode in
-                switch mode {
-                case .none: macro.trailingKey = nil
-                case .enter: macro.trailingKey = .enter
-                case .space: macro.trailingKey = .space
-                case .tab: macro.trailingKey = .tab
-                case .custom: macro.trailingKey = .custom(keyCode: nil, modifiers: [])
-                }
-            }
-        )
-    }
-
-    private var trailingShortcutBinding: Binding<ShortcutDefinition> {
-        Binding(
-            get: { ShortcutDefinition(trailingKey: macro.trailingKey) },
-            set: { shortcut in
-                switch shortcut.key {
-                case .keyCode(let keyCode):
-                    macro.trailingKey = .custom(keyCode: keyCode, modifiers: shortcut.modifiers)
-                case .function(let number):
-                    macro.trailingKey = .custom(
-                        keyCode: MacKeyCodePolicy.keyCode(forFunction: number),
-                        modifiers: shortcut.modifiers
-                    )
-                case .empty, .letter:
-                    break
-                }
-            }
-        )
-    }
-}
-
-private enum TrailingMode: String, CaseIterable, Identifiable {
-    case none
-    case enter
-    case space
-    case tab
-    case custom
-
-    var id: String { rawValue }
-
-    init(_ trailingKey: TrailingKey?) {
-        switch trailingKey {
-        case nil: self = .none
-        case .enter?: self = .enter
-        case .space?: self = .space
-        case .tab?: self = .tab
-        case .custom?, .customFunction?: self = .custom
-        }
-    }
-
-    var label: String {
-        switch self {
-        case .none: return "없음"
-        case .enter: return "Enter"
-        case .space: return "Space"
-        case .tab: return "Tab"
-        case .custom: return "사용자 지정"
-        }
-    }
 }

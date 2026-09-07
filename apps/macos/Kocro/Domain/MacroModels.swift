@@ -152,6 +152,17 @@ struct MacroDefinition: Codable, Equatable, Identifiable, Sendable {
         title.isEmpty ? "이름 없는 매크로" : title
     }
 
+    var settingsDisplayTitle: String {
+        if !title.isEmpty { return title }
+        let firstLine = text.split(
+            separator: "\n",
+            omittingEmptySubsequences: false
+        ).first ?? ""
+        let value = String(firstLine.prefix(10))
+        if value.isEmpty { return "새 매크로" }
+        return firstLine.count > 10 ? value + "…" : value
+    }
+
     static func newDraft() -> Self {
         Self(
             id: UUID(),
