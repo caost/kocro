@@ -103,7 +103,7 @@ enum MacKeyCodePolicy {
             )
         }
         if mode == .shortcut {
-            entries.append(contentsOf: (1...24).map { number in
+            entries.append(contentsOf: (1...20).map { number in
                 TokenEntry(
                     canonical: "{KC_F\(number)}",
                     aliases: [],

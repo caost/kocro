@@ -53,13 +53,6 @@ enum Fixtures {
         macro(text: "c\(number)", shortcut: .init(key: .function(number), modifiers: []))
     }
 
-    static func hid(_ number: Int) -> MacroDefinition {
-        macro(text: "h\(number)", shortcut: .init(key: .function(number), modifiers: []))
-    }
-
-    static func enabledCarbonCarbonHID() -> [MacroDefinition] {
-        [carbon(13), carbon(14), hid(21)]
-    }
 }
 
 final class CarbonSpy: CarbonServing {
@@ -139,109 +132,15 @@ final class ObjectReleaseBox {
     }
 }
 
-final class HIDSpy: HIDServing {
-    var onFunction: ((UInt64, Int, ContinuousClock.Instant) -> Void)?
-    var permission: Bool
-    var starts: Bool
-    private(set) var permissionChecks = 0
-    private(set) var usages: Set<Int> = []
-    private(set) var stopCount = 0
-    private var nextGeneration: UInt64 = 1
-    private var activeGeneration: UInt64?
-
-    init(permission: Bool, starts: Bool) {
-        self.permission = permission
-        self.starts = starts
-    }
-
-    var hasPermission: Bool {
-        permissionChecks += 1
-        return permission
-    }
-
-    func start(functions: Set<Int>) -> UInt64? {
-        usages = functions
-        let generation = nextGeneration
-        nextGeneration += 1
-        activeGeneration = starts ? generation : nil
-        return activeGeneration
-    }
-
-    func stop() {
-        activeGeneration = nil
-        stopCount += 1
-    }
-
-    func send(function: Int) {
-        guard let activeGeneration else { return }
-        onFunction?(activeGeneration, function, ContinuousClock.now)
-    }
-}
-
-final class HIDAPISpy: HIDAPI {
-    private(set) var matchingUsages: Set<Int> = []
-    var opens = true
-    private let lock = NSLock()
-    private var callbacks: [(Int, Int, ContinuousClock.Instant) -> Void] = []
-
-    func start(
-        matching usages: Set<Int>,
-        onValue: @escaping (Int, Int, ContinuousClock.Instant) -> Void
-    ) -> Bool {
-        lock.lock()
-        matchingUsages = usages
-        callbacks.append(onValue)
-        lock.unlock()
-        return opens
-    }
-
-    func stop() {}
-
-    func send(usage: Int, value: Int) {
-        send(
-            session: callbacks.count - 1,
-            usage: usage,
-            value: value,
-            instant: ContinuousClock.now
-        )
-    }
-
-    func send(
-        session: Int,
-        usage: Int,
-        value: Int,
-        instant: ContinuousClock.Instant
-    ) {
-        lock.lock()
-        let callback = callbacks[session]
-        lock.unlock()
-        callback(usage, value, instant)
-    }
-}
-
-final class TriggerSpy {
-    private(set) var functions: [Int] = []
-    private(set) var instants: [ContinuousClock.Instant] = []
-
-    func call(_ function: Int, _ instant: ContinuousClock.Instant) {
-        functions.append(function)
-        instants.append(instant)
-    }
-}
-
 final class PermissionAPISpy: PermissionAPI {
     var accessibility: Bool
-    var input: Bool
     private(set) var accessibilityChecks: [Bool] = []
     private(set) var accessibilityPrompts = 0
     private(set) var currentAccessibilityChecks = 0
-    private(set) var inputChecks = 0
-    private(set) var inputRequests = 0
     private(set) var openedSettings: [PrivacyKind] = []
 
-    init(accessibility: Bool, input: Bool) {
+    init(accessibility: Bool) {
         self.accessibility = accessibility
-        self.input = input
     }
 
     func accessibilityTrusted(prompt: Bool) -> Bool {
@@ -253,15 +152,6 @@ final class PermissionAPISpy: PermissionAPI {
     func currentAccessibilityTrusted() -> Bool {
         currentAccessibilityChecks += 1
         return accessibility
-    }
-
-    func inputMonitoringGranted() -> Bool {
-        inputChecks += 1
-        return input
-    }
-
-    func requestInputMonitoring() {
-        inputRequests += 1
     }
 
     func openSettings(_ kind: PrivacyKind) {
@@ -435,10 +325,7 @@ final class PipelineHarness {
             store: store,
             shortcuts: shortcuts,
             permissions: PermissionSpy(
-                state: .init(
-                    accessibility: accessibility,
-                    inputMonitoring: nil
-                ),
+                state: .init(accessibility: accessibility),
                 currentAccessibility: accessibility
             ),
             queue: queue
@@ -555,11 +442,10 @@ final class PermissionSpy: PermissionServing, @unchecked Sendable {
     private var stateStorage: PermissionState
     private var directAccessibility: Bool
     private var refreshedStateStorage: PermissionState?
-    private var refreshNeedsHIDStorage: [Bool] = []
     private var currentChecksStorage = 0
 
     init(
-        state: PermissionState = .init(accessibility: true, inputMonitoring: nil),
+        state: PermissionState = .init(accessibility: true),
         currentAccessibility: Bool = true
     ) {
         stateStorage = state
@@ -571,20 +457,17 @@ final class PermissionSpy: PermissionServing, @unchecked Sendable {
         get { locked { refreshedStateStorage } }
         set { locked { refreshedStateStorage = newValue } }
     }
-    var refreshNeedsHID: [Bool] { locked { refreshNeedsHIDStorage } }
     var currentAccessibilityChecks: Int { locked { currentChecksStorage } }
 
     @discardableResult
-    func refresh(needsHID: Bool) -> PermissionState {
+    func refresh() -> PermissionState {
         locked {
-            refreshNeedsHIDStorage.append(needsHID)
             if let refreshedStateStorage { stateStorage = refreshedStateStorage }
             return stateStorage
         }
     }
 
     func requestAccessibility() {}
-    func requestInputMonitoring() {}
     func openSettings(_ kind: PrivacyKind) {}
 
     func currentAccessibility() -> Bool {

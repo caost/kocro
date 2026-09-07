@@ -4,12 +4,31 @@ import XCTest
 final class SettingsValidatorTests: XCTestCase {
     let validator = SettingsValidator()
 
+    func testDefaultsAndValidationExcludeF21ThroughF24ExecutionShortcuts() {
+        XCTAssertEqual(
+            AppSettings.defaults.macros.map(\.shortcut.key),
+            (13...20).map { .function($0) }
+        )
+        for number in 21...24 {
+            XCTAssertThrowsError(
+                try validator.validateShortcut(
+                    .init(key: .function(number), modifiers: [])
+                )
+            )
+            var inactive = MacroDefinition.newDraft()
+            inactive.shortcut = .init(key: .function(number), modifiers: [])
+            XCTAssertThrowsError(
+                try validator.validate(.init(macros: [inactive]))
+            )
+        }
+    }
+
     func testDefaultsAndOrder() throws {
         let value = AppSettings.defaults
 
-        XCTAssertEqual(value.macros.map(\.shortcut.key), (13...24).map { .function($0) })
-        XCTAssertEqual(value.macros.map(\.title), (1...12).map { "매크로 \($0)" })
-        XCTAssertEqual(Set(value.macros.map(\.id)).count, 12)
+        XCTAssertEqual(value.macros.map(\.shortcut.key), (13...20).map { .function($0) })
+        XCTAssertEqual(value.macros.map(\.title), (1...8).map { "매크로 \($0)" })
+        XCTAssertEqual(Set(value.macros.map(\.id)).count, 8)
         XCTAssertTrue(value.macros.allSatisfy { !$0.isEnabled && $0.text.isEmpty })
         XCTAssertNoThrow(try validator.validate(value))
 
@@ -119,24 +138,20 @@ final class SettingsValidatorTests: XCTestCase {
             try validator.validateShortcut(.init(key: .function(1), modifiers: []))
         )
 
-        for number in 13...24 {
-            XCTAssertNoThrow(
-                try validator.validateShortcut(.init(key: .function(number), modifiers: []))
-            )
-        }
         for number in 13...20 {
             XCTAssertNoThrow(
+                try validator.validateShortcut(.init(key: .function(number), modifiers: []))
+            )
+            XCTAssertNoThrow(
                 try validator.validateShortcut(.init(key: .function(number), modifiers: [.shift]))
             )
         }
-        for number in 21...24 {
-            XCTAssertThrowsError(
-                try validator.validateShortcut(.init(key: .function(number), modifiers: [.shift]))
-            )
-        }
-        for number in 25...35 {
+        for number in 21...35 {
             XCTAssertThrowsError(
                 try validator.validateShortcut(.init(key: .function(number), modifiers: []))
+            )
+            XCTAssertThrowsError(
+                try validator.validateShortcut(.init(key: .function(number), modifiers: [.shift]))
             )
         }
 

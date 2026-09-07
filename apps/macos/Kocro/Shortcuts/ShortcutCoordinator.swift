@@ -3,8 +3,6 @@ import Foundation
 enum RegistrationState: Equatable {
     case registered
     case registrationFailed
-    case inputMonitoringRequired
-    case hidStartFailed
 }
 
 protocol CarbonServing: AnyObject {
@@ -12,13 +10,6 @@ protocol CarbonServing: AnyObject {
     func register(id: UInt32, shortcut: ShortcutDefinition) -> Bool
     func unregister(id: UInt32)
     func unregisterAll()
-}
-
-protocol HIDServing: AnyObject {
-    var hasPermission: Bool { get }
-    var onFunction: ((UInt64, Int, ContinuousClock.Instant) -> Void)? { get set }
-    func start(functions: Set<Int>) -> UInt64?
-    func stop()
 }
 
 protocol ShortcutReplacementCandidate: AnyObject {
@@ -65,7 +56,6 @@ final class ShortcutCoordinator {
         let carbonRoutes: [UInt32: UUID]
         let carbonRegistrations: [ShortcutRegistrationIdentity: UInt32]
         let newlyRegisteredIDs: Set<UInt32>
-        let hidFunctions: Set<Int>
     }
 
     /// The handler must finish after taking its trigger-time snapshot and enqueueing work.
@@ -76,27 +66,15 @@ final class ShortcutCoordinator {
     }
 
     private let carbon: CarbonServing
-    private let hid: HIDServing
     private let ingress = ShortcutIngress()
     private var nextRegistrationID: UInt32? = 1
     private var carbonRegistrations: [ShortcutRegistrationIdentity: UInt32] = [:]
-    private var currentHIDFunctions: Set<Int> = []
-    private var currentHIDGeneration: UInt64?
     private var pendingReplacement: PendingReplacement?
 
-    init(carbon: CarbonServing, hid: HIDServing) {
+    init(carbon: CarbonServing) {
         self.carbon = carbon
-        self.hid = hid
-
         carbon.onRegistrationID = { [weak self] registrationID, instant in
             self?.ingress.submitCarbon(id: registrationID, instant: instant)
-        }
-        hid.onFunction = { [weak self] generation, function, instant in
-            self?.ingress.submitHID(
-                generation: generation,
-                function: function,
-                instant: instant
-            )
         }
     }
 
@@ -123,8 +101,7 @@ final class ShortcutCoordinator {
         var newlyRegisteredIDs: Set<UInt32> = []
 
         for index in candidateSettings.macros.indices
-        where candidateSettings.macros[index].isEnabled
-            && !candidateSettings.macros[index].shortcut.isHIDOnly {
+        where candidateSettings.macros[index].isEnabled {
             let macro = candidateSettings.macros[index]
             guard let identity = macro.shortcut.registrationIdentity,
                   candidateRegistrations[identity] == nil else {
@@ -160,18 +137,6 @@ final class ShortcutCoordinator {
                 : registrationID + 1
         }
 
-        let hidMacros = candidateSettings.macros.filter {
-            $0.isEnabled && $0.shortcut.isHIDOnly
-        }
-        let hidFunctions = Set(hidMacros.compactMap(\.shortcut.functionNumber))
-        if !hidMacros.isEmpty {
-            if !hid.hasPermission {
-                hidMacros.forEach { states[$0.id] = .inputMonitoringRequired }
-            } else {
-                hidMacros.forEach { states[$0.id] = .registered }
-            }
-        }
-
         let transactionID = UUID()
         pendingReplacement = PendingReplacement(
             transactionID: transactionID,
@@ -179,8 +144,7 @@ final class ShortcutCoordinator {
             states: states,
             carbonRoutes: carbonIDs,
             carbonRegistrations: candidateRegistrations,
-            newlyRegisteredIDs: newlyRegisteredIDs,
-            hidFunctions: hidFunctions
+            newlyRegisteredIDs: newlyRegisteredIDs
         )
         return PreparedShortcutReplacement(
             settings: candidateSettings,
@@ -199,27 +163,16 @@ final class ShortcutCoordinator {
         guard let candidate = candidate as? PreparedShortcutReplacement,
               let pending = consume(candidate) else { return nil }
         ingress.beginReplacement()
-
-        var states = pending.states
-        let hidRoutes = installHID(
-            functions: pending.hidFunctions,
-            macros: pending.settings.macros,
-            states: &states
-        )
-        installSnapshots(states)
-        ingress.completeReplacement(
-            carbonIDs: pending.carbonRoutes,
-            hidFunctions: hidRoutes
-        )
-
+        installSnapshots(pending.states)
+        ingress.completeReplacement(carbonIDs: pending.carbonRoutes)
         installCarbonRegistrations(pending.carbonRegistrations)
-        return states
+        return pending.states
     }
 
     func cancel(_ candidate: any ShortcutReplacementCandidate) {
         dispatchPrecondition(condition: .onQueue(.main))
-        guard let candidate = candidate as? PreparedShortcutReplacement else { return }
-        guard let pending = consume(candidate) else { return }
+        guard let candidate = candidate as? PreparedShortcutReplacement,
+              let pending = consume(candidate) else { return }
         pending.newlyRegisteredIDs.forEach { carbon.unregister(id: $0) }
     }
 
@@ -229,44 +182,8 @@ final class ShortcutCoordinator {
         ingress.beginReplacement()
         pendingReplacement = nil
         carbon.unregisterAll()
-        hid.stop()
         carbonRegistrations.removeAll()
-        currentHIDFunctions.removeAll()
-        currentHIDGeneration = nil
-        ingress.completeReplacement(carbonIDs: [:], hidFunctions: [:])
-    }
-
-    private func installHID(
-        functions: Set<Int>,
-        macros: [MacroDefinition],
-        states: inout [UUID: RegistrationState]
-    ) -> [HIDRoute: UUID] {
-        let hidMacros = macros.filter { $0.isEnabled && $0.shortcut.isHIDOnly }
-        guard !functions.isEmpty else {
-            stopHIDIfActive()
-            return [:]
-        }
-
-        guard hidMacros.allSatisfy({ states[$0.id] == .registered }) else {
-            stopHIDIfActive()
-            return [:]
-        }
-
-        if !currentHIDFunctions.isEmpty { hid.stop() }
-        currentHIDGeneration = hid.start(functions: functions)
-        currentHIDFunctions = currentHIDGeneration == nil ? [] : functions
-
-        guard let generation = currentHIDGeneration else {
-            for macro in hidMacros where states[macro.id] == .registered {
-                states[macro.id] = .hidStartFailed
-            }
-            return [:]
-        }
-        return Dictionary(uniqueKeysWithValues: hidMacros.compactMap { macro in
-            macro.shortcut.functionNumber.map {
-                (HIDRoute(generation: generation, function: $0), macro.id)
-            }
-        })
+        ingress.completeReplacement(carbonIDs: [:])
     }
 
     private func installCarbonRegistrations(
@@ -276,12 +193,6 @@ final class ShortcutCoordinator {
             .subtracting(registrations.values)
         carbonRegistrations = registrations
         removedIDs.forEach { carbon.unregister(id: $0) }
-    }
-
-    private func stopHIDIfActive() {
-        if !currentHIDFunctions.isEmpty { hid.stop() }
-        currentHIDFunctions = []
-        currentHIDGeneration = nil
     }
 
     fileprivate func abandonPreparedReplacement(id transactionID: UUID) {
@@ -316,7 +227,6 @@ private final class ShortcutIngress: @unchecked Sendable {
     private let deliveryQueue = DispatchQueue(label: "com.caost.Kocro.shortcut-ingress")
     private var replacing = false
     private var carbonIDs: [UInt32: UUID] = [:]
-    private var hidFunctions: [HIDRoute: UUID] = [:]
     private var triggerHandler: ((UUID, ContinuousClock.Instant) -> Void)?
 
     var trigger: ((UUID, ContinuousClock.Instant) -> Void)? {
@@ -328,16 +238,6 @@ private final class ShortcutIngress: @unchecked Sendable {
         submit(instant: instant) { carbonIDs[id] }
     }
 
-    func submitHID(
-        generation: UInt64,
-        function: Int,
-        instant: ContinuousClock.Instant
-    ) {
-        submit(instant: instant) {
-            hidFunctions[HIDRoute(generation: generation, function: function)]
-        }
-    }
-
     func beginReplacement() {
         condition.lock()
         replacing = true
@@ -345,13 +245,9 @@ private final class ShortcutIngress: @unchecked Sendable {
         deliveryQueue.sync {}
     }
 
-    func completeReplacement(
-        carbonIDs: [UInt32: UUID],
-        hidFunctions: [HIDRoute: UUID]
-    ) {
+    func completeReplacement(carbonIDs: [UInt32: UUID]) {
         condition.lock()
         self.carbonIDs = carbonIDs
-        self.hidFunctions = hidFunctions
         replacing = false
         condition.broadcast()
         condition.unlock()
@@ -383,9 +279,4 @@ private final class ShortcutIngress: @unchecked Sendable {
         defer { condition.unlock() }
         return body()
     }
-}
-
-private struct HIDRoute: Hashable {
-    let generation: UInt64
-    let function: Int
 }

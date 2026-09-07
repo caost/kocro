@@ -8,7 +8,6 @@ enum ValidationError: Error {
     case modifierRequired
     case unsupportedFunction
     case unsupportedModifiers
-    case hidOnlyKeyRejectsModifiers
     case duplicateShortcut
     case invalidTrailing
 }
@@ -34,6 +33,9 @@ struct SettingsValidator {
         if macro.text.count > MacroDefinition.maximumTextCount {
             issues.append(.textTooLong)
         }
+        if macro.shortcut.usesRemovedFunctionKey {
+            issues.append(.unsupportedFunction)
+        }
         guard macro.isEnabled else {
             return issues
         }
@@ -44,7 +46,9 @@ struct SettingsValidator {
         if macro.text.isEmpty {
             issues.append(.emptyText)
         }
-        issues.append(contentsOf: thrownIssue { try validateShortcut(macro.shortcut) })
+        if !macro.shortcut.usesRemovedFunctionKey {
+            issues.append(contentsOf: thrownIssue { try validateShortcut(macro.shortcut) })
+        }
 
         guard let identity = macro.shortcut.registrationIdentity else {
             issues.append(.duplicateShortcut)
@@ -86,14 +90,11 @@ struct SettingsValidator {
                 throw ValidationError.modifierRequired
             }
         case .function(let number):
-            guard (1...24).contains(number) else {
+            guard (1...20).contains(number) else {
                 throw ValidationError.unsupportedFunction
             }
             if number <= 12, shortcut.modifiers.isEmpty {
                 throw ValidationError.modifierRequired
-            }
-            if (21...24).contains(number), !shortcut.modifiers.isEmpty {
-                throw ValidationError.hidOnlyKeyRejectsModifiers
             }
         }
     }

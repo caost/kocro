@@ -207,26 +207,13 @@ enum TokenShortcutCodec {
             ))
         }
         if mode == .shortcut, let base {
-            if isFunction(base, in: 21...24), !modifiers.isEmpty {
-                issues.append(.init(
-                    token: baseToken ?? source,
-                    range: baseRange,
-                    message: "F21~F24는 보조 키 없이 사용하세요"
-                ))
-            } else if !isFunction(base, in: 13...24), modifiers.isEmpty {
+            if !isFunction(base, in: 13...20), modifiers.isEmpty {
                 issues.append(.init(
                     token: baseToken ?? source,
                     range: baseRange,
                     message: "일반 키에는 보조 키를 하나 이상 추가하세요"
                 ))
             }
-        }
-        if mode == .trailing, let base, isFunction(base, in: 21...24) {
-            issues.append(.init(
-                token: baseToken ?? source,
-                range: baseRange,
-                message: "후속 키에는 F21~F24를 사용할 수 없습니다"
-            ))
         }
 
         guard issues.isEmpty, let base, let baseToken else {
@@ -520,8 +507,6 @@ final class RecorderView: NSView, NSAccessibilityButton {
     }
 
     private static let horizontalInset: CGFloat = 6
-    private static let tokenHorizontalPadding: CGFloat = 12
-    private static let tokenSpacing: CGFloat = 4
     private static let controlHeight: CGFloat = 26
     private let accessibilityNotifications: AccessibilityNotificationPosting
     private var pendingKeyEquivalentRelease: KeyGesture?
@@ -573,19 +558,10 @@ final class RecorderView: NSView, NSAccessibilityButton {
     }
 
     override var acceptsFirstResponder: Bool { true }
+    var visibleLabel: String { prompt }
     override var intrinsicContentSize: NSSize {
-        let width: CGFloat
-        if tokens.isEmpty {
-            width = prompt.size(withAttributes: textAttributes).width
-                + Self.horizontalInset * 2
-        } else {
-            width = (tokenFrames(in: .init(
-                x: 0,
-                y: 0,
-                width: .greatestFiniteMagnitude,
-                height: Self.controlHeight
-            )).last?.maxX ?? Self.horizontalInset) + Self.horizontalInset
-        }
+        let width = visibleLabel.size(withAttributes: textAttributes).width
+            + Self.horizontalInset * 2
         return NSSize(width: ceil(width), height: Self.controlHeight)
     }
 
@@ -701,40 +677,15 @@ final class RecorderView: NSView, NSAccessibilityButton {
         bounds.fill()
         NSColor.separatorColor.setStroke()
         NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 5, yRadius: 5).stroke()
-        guard !tokens.isEmpty else {
-            let size = prompt.size(withAttributes: textAttributes)
-            prompt.draw(
-                at: NSPoint(
-                    x: Self.horizontalInset,
-                    y: (bounds.height - size.height) / 2
-                ),
-                withAttributes: textAttributes
-            )
-            drawFocusRingIfNeeded()
-            return
-        }
-
-        for (token, badge) in zip(tokens, tokenFrames(in: bounds)) {
-            let size = token.size(withAttributes: textAttributes)
-            NSColor.separatorColor.setStroke()
-            NSBezierPath(roundedRect: badge, xRadius: 4, yRadius: 4).stroke()
-            token.draw(
-                at: NSPoint(x: badge.minX + 6, y: (bounds.height - size.height) / 2),
-                withAttributes: textAttributes
-            )
-        }
+        let size = visibleLabel.size(withAttributes: textAttributes)
+        visibleLabel.draw(
+            at: NSPoint(
+                x: Self.horizontalInset,
+                y: (bounds.height - size.height) / 2
+            ),
+            withAttributes: textAttributes
+        )
         drawFocusRingIfNeeded()
-    }
-
-    func tokenFrames(in bounds: NSRect) -> [NSRect] {
-        var x = bounds.minX + Self.horizontalInset
-        return tokens.map { token in
-            let width = token.size(withAttributes: textAttributes).width
-                + Self.tokenHorizontalPadding
-            let frame = NSRect(x: x, y: bounds.minY + 3, width: width, height: bounds.height - 6)
-            x = frame.maxX + Self.tokenSpacing
-            return frame
-        }
     }
 
     private var textAttributes: [NSAttributedString.Key: Any] {

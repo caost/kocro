@@ -15,7 +15,6 @@ struct MenuBarViewModel {
     var statusText: String {
         if statuses.contains(.settingsError) { return "설정 오류" }
         if statuses.contains(.accessibilityRequired) { return "Accessibility 권한 필요" }
-        if statuses.contains(.inputMonitoringRequired) { return "Input Monitoring 권한 필요" }
         return "준비됨"
     }
 
@@ -95,15 +94,6 @@ struct MenuBarView: View {
                 }
                 Button("Accessibility 설정 열기") {
                     app.openPrivacySettings(.accessibility)
-                }
-            }
-
-            if app.showsInputMonitoringActions {
-                Button("Input Monitoring 권한 요청") {
-                    app.requestInputMonitoring()
-                }
-                Button("Input Monitoring 설정 열기") {
-                    app.openPrivacySettings(.inputMonitoring)
                 }
             }
 

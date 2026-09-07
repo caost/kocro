@@ -54,6 +54,118 @@ struct AboutPanelContent {
 }
 
 @MainActor
+protocol ApplicationActivating: AnyObject {
+    func setActivationPolicy(_ policy: NSApplication.ActivationPolicy) -> Bool
+    func activate()
+}
+
+@MainActor
+private final class SystemApplicationActivation: ApplicationActivating {
+    func setActivationPolicy(_ policy: NSApplication.ActivationPolicy) -> Bool {
+        NSApp.setActivationPolicy(policy)
+    }
+
+    func activate() {
+        if #available(macOS 14.0, *) {
+            NSApp.activate()
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+}
+
+@MainActor
+final class SettingsWindowActivationController {
+    private let application: ApplicationActivating
+    private var isWindowOpen = false
+
+    init(application: ApplicationActivating) {
+        self.application = application
+    }
+
+    func windowDidOpen() {
+        guard !isWindowOpen else { return }
+        isWindowOpen = true
+        guard application.setActivationPolicy(.regular) else { return }
+        application.activate()
+    }
+
+    func windowDidClose() {
+        guard isWindowOpen else { return }
+        isWindowOpen = false
+        _ = application.setActivationPolicy(.accessory)
+    }
+}
+
+private struct SettingsWindowLifecycleObserver: NSViewRepresentable {
+    let onOpen: () -> Void
+    let onClose: () -> Void
+
+    func makeNSView(context: Context) -> SettingsWindowObservationView {
+        SettingsWindowObservationView(onOpen: onOpen, onClose: onClose)
+    }
+
+    func updateNSView(_ view: SettingsWindowObservationView, context: Context) {
+        view.onOpen = onOpen
+        view.onClose = onClose
+    }
+}
+
+private final class SettingsWindowObservationView: NSView {
+    var onOpen: () -> Void
+    var onClose: () -> Void
+
+    private weak var observedWindow: NSWindow?
+    private var closeObserver: NSObjectProtocol?
+
+    init(onOpen: @escaping () -> Void, onClose: @escaping () -> Void) {
+        self.onOpen = onOpen
+        self.onClose = onClose
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window !== observedWindow else { return }
+        stopObserving(notifyClose: observedWindow != nil)
+        guard let window else { return }
+
+        observedWindow = window
+        onOpen()
+        closeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.stopObserving(notifyClose: true)
+            }
+        }
+    }
+
+    deinit {
+        if let closeObserver {
+            NotificationCenter.default.removeObserver(closeObserver)
+        }
+    }
+
+    private func stopObserving(notifyClose: Bool) {
+        guard observedWindow != nil else { return }
+        observedWindow = nil
+        if let closeObserver {
+            NotificationCenter.default.removeObserver(closeObserver)
+            self.closeObserver = nil
+        }
+        if notifyClose { onClose() }
+    }
+}
+
+@MainActor
 struct LegacySettingsWindowAction {
     let sendAction: (Selector) -> Bool
 
@@ -81,6 +193,9 @@ final class AppDependencies: ObservableObject {
     let settings: SettingsViewModel
     let login: LoginItemController
 
+    private let settingsWindowActivation = SettingsWindowActivationController(
+        application: SystemApplicationActivation()
+    )
     private var terminationObserver: NSObjectProtocol?
 
     init() {
@@ -90,7 +205,6 @@ final class AppDependencies: ObservableObject {
             validator: validator
         )
         let carbon = CarbonHotKeySource()
-        let hid = HIDFunctionKeySource()
         let permissions = PermissionClient(api: SystemPermissionAPI())
         let measurementEnabled = MeasurementSession.isRequested()
         let measurement = measurementEnabled
@@ -101,7 +215,7 @@ final class AppDependencies: ObservableObject {
             poster: poster,
             accessibility: permissions.currentAccessibility
         )
-        let shortcuts = ShortcutCoordinator(carbon: carbon, hid: hid)
+        let shortcuts = ShortcutCoordinator(carbon: carbon)
         let controller = AppController(
             store: store,
             shortcuts: shortcuts,
@@ -149,10 +263,7 @@ final class AppDependencies: ObservableObject {
 
     func menuDidOpen() {
         login.refreshStatus()
-        controller.refreshPermissions(
-            forDraft: settings.settings,
-            reconcileShortcuts: true
-        )
+        controller.refreshPermissions(reconcileShortcuts: true)
         settings.synchronizeStatus(from: controller)
     }
 
@@ -162,12 +273,17 @@ final class AppDependencies: ObservableObject {
         settings.synchronizeStatus(from: controller)
     }
 
+    func settingsWindowDidOpen() {
+        settingsWindowActivation.windowDidOpen()
+    }
+
+    func settingsWindowDidClose() {
+        settingsWindowActivation.windowDidClose()
+    }
+
     func applicationDidBecomeActive() {
         login.refreshStatus()
-        controller.refreshPermissions(
-            forDraft: settings.settings,
-            reconcileShortcuts: true
-        )
+        controller.refreshPermissions(reconcileShortcuts: true)
         settings.synchronizeStatus(from: controller)
     }
 
@@ -229,6 +345,12 @@ struct KocroApp: App {
                 app: dependencies.controller,
                 login: dependencies.login,
                 prepare: dependencies.settingsDidOpen
+            )
+            .background(
+                SettingsWindowLifecycleObserver(
+                    onOpen: dependencies.settingsWindowDidOpen,
+                    onClose: dependencies.settingsWindowDidClose
+                )
             )
             .onChange(of: scenePhase) { phase in
                 if phase == .active {

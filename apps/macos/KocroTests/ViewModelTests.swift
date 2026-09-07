@@ -4,6 +4,18 @@ import XCTest
 
 @MainActor
 final class ViewModelTests: XCTestCase {
+    func testExecutionTokenInputAndCompletionExcludeF21ThroughF24() {
+        for number in 21...24 {
+            XCTAssertThrowsError(
+                try TokenShortcutCodec.parse("{KC_F\(number)}", mode: .shortcut)
+            )
+        }
+        XCTAssertEqual(
+            TokenShortcutCodec.completions(for: "{KC_F2", mode: .shortcut),
+            ["{KC_F2}", "{KC_F20}"]
+        )
+    }
+
     func testSettingsStartsInMacrosSectionAndSupportsGeneralSelection() {
         let model = SettingsViewModel(settings: .init(macros: []), validator: .init())
 
@@ -15,9 +27,9 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(SettingsSection.allCases, [.macros, .general])
     }
 
-    func testGeneralSettingsExposesPermissionsAndDraftHIDRequirement() {
+    func testGeneralSettingsExposesLoginAndAccessibility() {
         let permissions = GeneralPermissionSpy(
-            state: .init(accessibility: false, inputMonitoring: false)
+            state: .init(accessibility: false)
         )
         let app = AppController(
             store: StoreSpy(loadResult: .success(.init(macros: []))),
@@ -26,69 +38,22 @@ final class ViewModelTests: XCTestCase {
             queue: QueueSpy()
         )
         app.start()
-        app.draft = .init(macros: [Fixtures.hid(21)])
         let login = LoginItemController(service: LoginServiceSpy(status: .notRegistered))
         let general = GeneralSettingsViewModel(app: app, login: login)
 
         XCTAssertFalse(general.loginEnabled)
         XCTAssertNil(general.loginErrorMessage)
         XCTAssertFalse(general.accessibilityGranted)
-        XCTAssertTrue(general.showsInputMonitoring)
-        XCTAssertEqual(general.inputMonitoringGranted, false)
 
         general.requestAccessibility()
         general.openAccessibilitySettings()
-        general.requestInputMonitoring()
-        general.openInputMonitoringSettings()
-
         XCTAssertEqual(permissions.accessibilityRequestCount, 1)
-        XCTAssertEqual(permissions.inputMonitoringRequestCount, 1)
-        XCTAssertEqual(permissions.openedSettings, [.accessibility, .inputMonitoring])
+        XCTAssertEqual(permissions.openedSettings, [.accessibility])
     }
 
-    func testGeneralSettingsHidesInputMonitoringWithoutEnabledRuntimeOrDraftHID() {
-        let app = AppController(
-            store: StoreSpy(loadResult: .success(.init(macros: [Fixtures.carbon(13)]))),
-            shortcuts: ShortcutSpy(),
-            permissions: PermissionSpy(),
-            queue: QueueSpy()
-        )
-        app.start()
-        let login = LoginItemController(service: LoginServiceSpy(status: .notRegistered))
-
-        XCTAssertFalse(GeneralSettingsViewModel(app: app, login: login).showsInputMonitoring)
-    }
-
-    func testGeneralSettingsRefreshesInputMonitoringForDraftOnlyHID() {
-        let permissions = PermissionSpy(
-            state: .init(accessibility: true, inputMonitoring: nil)
-        )
-        let app = AppController(
-            store: StoreSpy(loadResult: .success(.init(macros: []))),
-            shortcuts: ShortcutSpy(),
-            permissions: permissions,
-            queue: QueueSpy()
-        )
-        app.start()
-        permissions.refreshedState = .init(accessibility: true, inputMonitoring: true)
-        let draft = AppSettings(macros: [Fixtures.hid(21)])
-        let login = LoginItemController(service: LoginServiceSpy(status: .notRegistered))
-        let general = GeneralSettingsViewModel(app: app, login: login, draft: draft)
-
-        XCTAssertNil(general.inputMonitoringGranted)
-
-        general.refreshPermissions()
-
-        XCTAssertEqual(permissions.refreshNeedsHID.last, true)
-        XCTAssertEqual(general.inputMonitoringGranted, true)
-    }
-
-    func testActiveRefreshIncludesDraftHIDAndReconcilesRuntimeShortcuts() {
+    func testActiveRefreshReconcilesRuntimeShortcuts() {
         let runtime = AppSettings(macros: [Fixtures.carbon(13)])
-        let draft = AppSettings(macros: [Fixtures.hid(21)])
-        let permissions = PermissionSpy(
-            state: .init(accessibility: true, inputMonitoring: nil)
-        )
+        let permissions = PermissionSpy(state: .init(accessibility: true))
         let shortcuts = ShortcutSpy()
         let app = AppController(
             store: StoreSpy(loadResult: .success(runtime)),
@@ -97,38 +62,12 @@ final class ViewModelTests: XCTestCase {
             queue: QueueSpy()
         )
         app.start()
-        permissions.refreshedState = .init(accessibility: true, inputMonitoring: true)
+        permissions.refreshedState = .init(accessibility: true)
 
-        app.refreshPermissions(forDraft: draft, reconcileShortcuts: true)
+        app.refreshPermissions(reconcileShortcuts: true)
 
-        XCTAssertEqual(permissions.refreshNeedsHID.last, true)
-        XCTAssertEqual(app.permissionState.inputMonitoring, true)
         XCTAssertEqual(shortcuts.commitCount, 2)
         XCTAssertEqual(shortcuts.prepareCalls.last, runtime)
-    }
-
-    func testMenuRefreshIncludesDraftHIDWithoutShowingRuntimeOnlyPermissionAction() {
-        let runtime = AppSettings(macros: [Fixtures.carbon(13)])
-        let draft = AppSettings(macros: [Fixtures.hid(21)])
-        let permissions = PermissionSpy(
-            state: .init(accessibility: true, inputMonitoring: nil)
-        )
-        let shortcuts = ShortcutSpy()
-        let app = AppController(
-            store: StoreSpy(loadResult: .success(runtime)),
-            shortcuts: shortcuts,
-            permissions: permissions,
-            queue: QueueSpy()
-        )
-        app.start()
-        permissions.refreshedState = .init(accessibility: true, inputMonitoring: false)
-
-        app.refreshPermissions(forDraft: draft, reconcileShortcuts: true)
-
-        XCTAssertEqual(permissions.refreshNeedsHID.last, true)
-        XCTAssertEqual(app.permissionState.inputMonitoring, false)
-        XCTAssertEqual(shortcuts.commitCount, 2)
-        XCTAssertFalse(app.showsInputMonitoringActions)
     }
 
     func testInjectedAppMenuActionsInvokeEachClosureOnce() {
@@ -179,7 +118,7 @@ final class ViewModelTests: XCTestCase {
 
     func testStatusPriorityAndRegisteredCount() {
         let menu = MenuBarViewModel(
-            statuses: [.inputMonitoringRequired, .accessibilityRequired, .settingsError],
+            statuses: [.accessibilityRequired, .settingsError],
             registrations: [.registered, .registrationFailed, .registered]
         )
 
@@ -187,7 +126,7 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(menu.registeredCount, 2)
         XCTAssertEqual(
             MenuBarViewModel(
-                statuses: [.inputMonitoringRequired, .accessibilityRequired],
+                statuses: [.accessibilityRequired],
                 registrations: []
             ).statusText,
             "Accessibility 권한 필요"
@@ -449,7 +388,7 @@ final class ViewModelTests: XCTestCase {
         model.loadDraftIfNeeded(from: app)
         model.synchronizeStatus(from: app)
 
-        XCTAssertEqual(model.settings.macros.count, 12)
+        XCTAssertEqual(model.settings.macros.count, 8)
         XCTAssertTrue(model.showsReplaceWarning)
         XCTAssertFalse(model.isDirty)
     }
@@ -511,7 +450,7 @@ final class ViewModelTests: XCTestCase {
             try TokenShortcutCodec.parse("", mode: .shortcut).value,
             .shortcut(.init(key: .empty, modifiers: []))
         )
-        XCTAssertNoThrow(try TokenShortcutCodec.parse("{KC_F21}", mode: .shortcut))
+        XCTAssertThrowsError(try TokenShortcutCodec.parse("{KC_F21}", mode: .shortcut))
         XCTAssertThrowsError(
             try TokenShortcutCodec.parse("{KC_CMD}+{KC_F21}", mode: .shortcut)
         )
@@ -542,7 +481,7 @@ final class ViewModelTests: XCTestCase {
             mode: .trailing
         )
 
-        XCTAssertEqual(shortcutFunctions, ["{KC_F}"] + (1...24).map { "{KC_F\($0)}" })
+        XCTAssertEqual(shortcutFunctions, ["{KC_F}"] + (1...20).map { "{KC_F\($0)}" })
         XCTAssertEqual(trailingFunctions, ["{KC_F}"] + (1...20).map { "{KC_F\($0)}" })
     }
 
@@ -574,7 +513,7 @@ final class ViewModelTests: XCTestCase {
 
         XCTAssertEqual(
             shortcut.completions,
-            ["{KC_F2}", "{KC_F20}", "{KC_F21}", "{KC_F22}", "{KC_F23}", "{KC_F24}"]
+            ["{KC_F2}", "{KC_F20}"]
         )
         shortcut.moveCompletion(.down)
         shortcut.acceptCompletion()
@@ -607,7 +546,7 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(trailingDraft.value, typedTrailing)
     }
 
-    func testF21ThroughF24AreSelectableButNotRecorderEvents() {
+    func testF21ThroughF24AreNeitherSelectableNorRecorderEvents() {
         var model = TokenEditorDraft(
             value: .shortcut(.init(key: .empty, modifiers: [])),
             mode: .shortcut
@@ -615,10 +554,8 @@ final class ViewModelTests: XCTestCase {
 
         model.selectToken("{KC_F24}")
 
-        XCTAssertEqual(
-            model.value,
-            .shortcut(.init(key: .function(24), modifiers: []))
-        )
+        XCTAssertEqual(model.value, .shortcut(.init(key: .empty, modifiers: [])))
+        XCTAssertFalse(model.issues.isEmpty)
         XCTAssertNil(KeyRecorderTranslator.shortcut(keyCode: 110, modifiers: []))
     }
 
@@ -722,7 +659,7 @@ final class ViewModelTests: XCTestCase {
     func testSupportedKeyHelpCoversRequiredTopics() {
         let text = SupportedKeyHelp.sections.map(\.body).joined(separator: "\n")
         for required in ["실행 단축키", "후속 키", "별칭", "보조 키",
-                         "F13~F20", "F21~F24", "지원하지"] {
+                         "F13~F20", "F21~F35", "지원하지"] {
             XCTAssertTrue(text.contains(required), "missing help topic: \(required)")
         }
         XCTAssertTrue(text.contains("Escape, Backspace와 Delete는 실행 단축키로 사용할 수 없습니다"))
@@ -743,8 +680,6 @@ final class ViewModelTests: XCTestCase {
     func testBadgePriorityCoversDirtyInactiveAndRegistrationFailures() {
         XCTAssertEqual(MacroStatusBadge.resolve(isEnabled: true, isDirty: true,
             registration: .registrationFailed).label, "충돌")
-        XCTAssertEqual(MacroStatusBadge.resolve(isEnabled: true, isDirty: true,
-            registration: .inputMonitoringRequired).label, "권한 필요")
         XCTAssertEqual(MacroStatusBadge.resolve(isEnabled: false, isDirty: false,
             registration: nil).label, "비활성")
     }
@@ -1017,6 +952,22 @@ final class ViewModelTests: XCTestCase {
             view.accessibilityValue() as? String,
             "⌃ Control, ⌘ Command, A"
         )
+    }
+
+    func testRecorderKeepsKeyRecordingPromptVisibleAfterValueChanges() {
+        let view = RecorderView(initialTokens: [])
+        view.prompt = "키로 기록"
+        let emptyWidth = view.intrinsicContentSize.width
+
+        view.tokens = ["⌥ Option", "⌘ Command", "I"]
+
+        XCTAssertEqual(view.visibleLabel, "키로 기록")
+        XCTAssertEqual(view.intrinsicContentSize.width, emptyWidth)
+        XCTAssertEqual(view.accessibilityValue() as? String, "⌥ Option, ⌘ Command, I")
+    }
+
+    func testMacroActivationUsesSwitchControl() {
+        XCTAssertEqual(MacroActivationToggle.controlKind, .switchToggle)
     }
 
     func testMacroRowsUseDistinctContextualRecorderLabelsWithoutChangingPrompts() throws {
@@ -1303,19 +1254,18 @@ final class ViewModelTests: XCTestCase {
         XCTAssertEqual(notifications.valueChangedElements.count, 2)
     }
 
-    func testRecorderIntrinsicWidthContainsLongestTokenCombination() throws {
+    func testRecorderIntrinsicWidthDoesNotChangeWithRecordedValue() {
         let view = RecorderView()
+        let prompt = view.visibleLabel
+        let promptWidth = view.intrinsicContentSize.width
+
         view.tokens = ShortcutDefinition(
             key: .keyCode(76),
             modifiers: [.control, .option, .shift, .command]
         ).tokens
-        let bounds = NSRect(origin: .zero, size: view.intrinsicContentSize)
 
-        let frames = view.tokenFrames(in: bounds)
-
-        XCTAssertGreaterThan(bounds.width, 330)
-        XCTAssertEqual(frames.count, view.tokens.count)
-        XCTAssertLessThanOrEqual(try XCTUnwrap(frames.last).maxX, bounds.maxX)
+        XCTAssertEqual(view.intrinsicContentSize.width, promptWidth)
+        XCTAssertEqual(view.visibleLabel, prompt)
     }
 
     func testRecorderFocusDisplayStateTracksFirstResponder() {
@@ -1431,16 +1381,14 @@ final class ViewModelTests: XCTestCase {
 private final class GeneralPermissionSpy: PermissionServing {
     var state: PermissionState
     private(set) var accessibilityRequestCount = 0
-    private(set) var inputMonitoringRequestCount = 0
     private(set) var openedSettings: [PrivacyKind] = []
 
     init(state: PermissionState) {
         self.state = state
     }
 
-    func refresh(needsHID: Bool) -> PermissionState { state }
+    func refresh() -> PermissionState { state }
     func requestAccessibility() { accessibilityRequestCount += 1 }
-    func requestInputMonitoring() { inputMonitoringRequestCount += 1 }
     func openSettings(_ kind: PrivacyKind) { openedSettings.append(kind) }
     func currentAccessibility() -> Bool { state.accessibility }
 }

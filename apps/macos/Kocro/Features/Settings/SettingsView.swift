@@ -42,7 +42,6 @@ enum MacroStatusBadge: Equatable {
     case unsaved
     case registered
     case conflict
-    case permissionRequired
     case registrationFailed
 
     var label: String {
@@ -51,7 +50,6 @@ enum MacroStatusBadge: Equatable {
         case .unsaved: return "저장 전"
         case .registered: return "등록됨"
         case .conflict: return "충돌"
-        case .permissionRequired: return "권한 필요"
         case .registrationFailed: return "등록 실패"
         }
     }
@@ -62,8 +60,6 @@ enum MacroStatusBadge: Equatable {
         registration: RegistrationState?
     ) -> Self {
         if registration == .registrationFailed { return .conflict }
-        if registration == .hidStartFailed { return .registrationFailed }
-        if registration == .inputMonitoringRequired { return .permissionRequired }
         if isDirty { return .unsaved }
         if !isEnabled { return .inactive }
         return registration == .registered ? .registered : .registrationFailed
@@ -130,7 +126,7 @@ struct SupportedKeyHelp {
     static let sections = [
         Section(
             title: "실행 단축키",
-            body: "실행 단축키는 modifier와 문자·숫자·기호, navigation·whitespace 키를 조합해 입력합니다. Escape, Backspace와 Delete는 실행 단축키로 사용할 수 없습니다. 일반 키와 F1~F12에는 보조 키가 필요합니다. F13~F20은 단독 또는 보조 키 조합을 지원합니다. F21~F24는 보조 키 없이 단독으로만 지원하며 메뉴에서 선택합니다."
+            body: "실행 단축키는 modifier와 문자·숫자·기호, navigation·whitespace 키를 조합해 입력합니다. Escape, Backspace와 Delete는 실행 단축키로 사용할 수 없습니다. 일반 키와 F1~F12에는 보조 키가 필요합니다. F13~F20은 단독 또는 보조 키 조합을 지원합니다. F21~F35, Fn, Caps Lock, 미디어 키는 지원하지 않습니다."
         ),
         Section(
             title: "후속 키",
@@ -335,7 +331,7 @@ final class SettingsViewModel: ObservableObject {
         case .emptyText:
             return "활성 매크로의 문자열이 비어 있습니다"
         case .emptyShortcut, .modifierRequired, .unsupportedFunction,
-             .unsupportedModifiers, .hidOnlyKeyRejectsModifiers:
+             .unsupportedModifiers:
             return "단축키를 수정하세요"
         case .duplicateShortcut:
             return "활성 단축키가 중복됩니다"
@@ -404,10 +400,6 @@ final class SettingsViewModel: ObservableObject {
             return ""
         case .registrationFailed:
             return "다른 앱 또는 macOS가 이 단축키를 사용하고 있습니다"
-        case .inputMonitoringRequired:
-            return "F21~F24 사용에는 Input Monitoring 권한이 필요합니다"
-        case .hidStartFailed:
-            return "F21~F24 모니터를 시작하지 못했습니다"
         }
     }
 
@@ -438,7 +430,7 @@ final class SettingsViewModel: ObservableObject {
             let issue = issues.first { issue in
                 switch issue {
                 case .emptyShortcut, .modifierRequired, .unsupportedFunction,
-                     .unsupportedModifiers, .hidOnlyKeyRejectsModifiers,
+                     .unsupportedModifiers,
                      .duplicateShortcut:
                     return true
                 default:
@@ -454,7 +446,7 @@ final class SettingsViewModel: ObservableObject {
             case .duplicateID:
                 focus = .title(macro.id)
             case .emptyShortcut, .modifierRequired, .unsupportedFunction,
-                 .unsupportedModifiers, .hidOnlyKeyRejectsModifiers,
+                 .unsupportedModifiers,
                  .duplicateShortcut:
                 focus = .shortcut(macro.id)
             }
@@ -501,21 +493,15 @@ private extension MacroFieldFocus {
 struct GeneralSettingsViewModel {
     private let app: AppController
     private let login: LoginItemController
-    private let draft: AppSettings
 
-    init(app: AppController, login: LoginItemController, draft: AppSettings? = nil) {
+    init(app: AppController, login: LoginItemController) {
         self.app = app
         self.login = login
-        self.draft = draft ?? app.draft
     }
 
     var loginEnabled: Bool { login.isEnabled }
     var loginErrorMessage: String? { login.errorMessage }
     var accessibilityGranted: Bool { app.permissionState.accessibility }
-    var inputMonitoringGranted: Bool? { app.permissionState.inputMonitoring }
-    var showsInputMonitoring: Bool {
-        needsInputMonitoring(app.runtime) || needsInputMonitoring(draft)
-    }
 
     func setLoginEnabled(_ enabled: Bool) {
         login.setEnabledReportingError(enabled)
@@ -523,14 +509,8 @@ struct GeneralSettingsViewModel {
 
     func requestAccessibility() { app.requestAccessibility() }
     func openAccessibilitySettings() { app.openPrivacySettings(.accessibility) }
-    func requestInputMonitoring() { app.requestInputMonitoring() }
-    func openInputMonitoringSettings() { app.openPrivacySettings(.inputMonitoring) }
     func refreshPermissions() {
-        app.refreshPermissions(forDraft: draft, reconcileShortcuts: false)
-    }
-
-    private func needsInputMonitoring(_ settings: AppSettings) -> Bool {
-        settings.macros.contains { $0.isEnabled && $0.shortcut.isHIDOnly }
+        app.refreshPermissions(reconcileShortcuts: false)
     }
 }
 
@@ -553,9 +533,7 @@ struct SettingsView: View {
             }
 
             TabView(selection: $model.selectedSection) {
-                GeneralSettingsView(
-                    model: .init(app: app, login: login, draft: model.settings)
-                )
+                GeneralSettingsView(model: .init(app: app, login: login))
                 .tabItem { Label(SettingsSection.general.label, systemImage: "gearshape") }
                 .tag(SettingsSection.general)
 
@@ -674,17 +652,6 @@ private struct GeneralSettingsView: View {
                     .accessibilityLabel("Accessibility 시스템 설정 열기")
             }
 
-            if model.showsInputMonitoring {
-                Section("Input Monitoring") {
-                    permissionStatus(granted: model.inputMonitoringGranted == true)
-                    Button("권한 요청", action: model.requestInputMonitoring)
-                        .accessibilityLabel("Input Monitoring 권한 요청")
-                    Button("시스템 설정 열기", action: model.openInputMonitoringSettings)
-                        .accessibilityLabel("Input Monitoring 시스템 설정 열기")
-                }
-            }
-
-
             Section("민감한 정보") {
                 Text("비밀번호, API 키와 인증 토큰을 매크로에 저장하지 마세요.")
                     .foregroundStyle(.secondary)
@@ -751,17 +718,7 @@ private struct TokenEditor: View {
                 .fixedSize(horizontal: true, vertical: false)
                 .frame(height: 26)
 
-                if mode == .shortcut {
-                    Menu("F21~F24 선택") {
-                        ForEach(21...24, id: \.self) { number in
-                            Button("F\(number)") {
-                                model.mutateTokenDraft(field) {
-                                    $0.selectToken("{KC_F\(number)}")
-                                }
-                            }
-                        }
-                    }
-                } else {
+                if mode == .trailing {
                     Button("지우기") {
                         model.mutateTokenDraft(field) { $0.clear() }
                     }
@@ -961,10 +918,10 @@ private struct MacroCard: View {
                     .accessibilityAction(named: Text("아래로 이동")) {
                         model.move(id: macro.id, direction: .down)
                     }
-                Toggle("활성화", isOn: $macro.isEnabled)
-                    .toggleStyle(.checkbox)
-                    .labelsHidden()
-                    .accessibilityLabel(labels.enabled)
+                MacroActivationToggle(
+                    isOn: $macro.isEnabled,
+                    accessibilityLabel: labels.enabled
+                )
                 TextField(
                     "제목",
                     text: $macro.title,
@@ -1080,4 +1037,22 @@ private struct MacroCard: View {
         MacroRecorderAccessibilityLabels(macro)
     }
 
+}
+
+enum MacroActivationControlKind: Equatable {
+    case switchToggle
+}
+
+struct MacroActivationToggle: View {
+    static let controlKind = MacroActivationControlKind.switchToggle
+
+    @Binding var isOn: Bool
+    let accessibilityLabel: String
+
+    var body: some View {
+        Toggle("활성화", isOn: $isOn)
+            .toggleStyle(.switch)
+            .labelsHidden()
+            .accessibilityLabel(accessibilityLabel)
+    }
 }

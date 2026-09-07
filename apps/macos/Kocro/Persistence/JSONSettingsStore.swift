@@ -19,11 +19,16 @@ final class JSONSettingsStore: SettingsStoring {
 
         do {
             let persisted = try JSONDecoder().decode(PersistedAppSettings.self, from: file.read())
-            let decoded = AppSettings(
+            var decoded = AppSettings(
                 macros: persisted.macros.enumerated().map { index, macro in
                     macro.definition(defaultTitle: "매크로 \(index + 1)")
                 }
             )
+            for index in decoded.macros.indices
+            where decoded.macros[index].shortcut.usesRemovedFunctionKey {
+                decoded.macros[index].isEnabled = false
+                decoded.macros[index].shortcut = .init(key: .empty, modifiers: [])
+            }
             return try validator.validate(decoded)
         } catch {
             throw StoreError.invalidFile
