@@ -996,7 +996,7 @@ private struct MacroCard: View {
                     text: $macro.title,
                     prompt: Text(macro.settingsDisplayTitle)
                 )
-                .frame(minWidth: 120, idealWidth: 220)
+                .frame(minWidth: 48, idealWidth: 220)
                 .accessibilityLabel(labels.title)
                 .focused(focusedField, equals: .title(macro.id))
                 let accessibility = model.collapsedShortcutAccessibilityPresentation(
@@ -1006,33 +1006,35 @@ private struct MacroCard: View {
                     tokens: model.collapsedShortcutTokens(for: macro.id),
                     accessibility: accessibility
                 )
-                .fixedSize(horizontal: true, vertical: false)
+                .frame(maxWidth: 320, alignment: .leading)
+                .clipped()
                 .layoutPriority(1)
-                Spacer()
-                Text(badge.label)
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(Color.secondary.opacity(0.14)))
-                    .accessibilityLabel(badge.label)
-                    .fixedSize()
-                Button(role: .destructive) {
-                    model.delete(id: macro.id)
-                } label: {
-                    Image(systemName: "trash")
+                Spacer(minLength: 0)
+                HStack(spacing: 8) {
+                    Text(badge.label)
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color.secondary.opacity(0.14)))
+                        .accessibilityLabel(badge.label)
+                    Button(role: .destructive) {
+                        model.delete(id: macro.id)
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(labels.delete)
+                    Button {
+                        model.expand(macro.id)
+                    } label: {
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(labels.expand)
+                    .accessibilityValue(isExpanded ? "펼쳐짐" : "접힘")
                 }
-                .buttonStyle(.borderless)
-                .fixedSize()
-                .accessibilityLabel(labels.delete)
-                Button {
-                    model.expand(macro.id)
-                } label: {
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                }
-                .buttonStyle(.borderless)
-                .fixedSize()
-                .accessibilityLabel(labels.expand)
-                .accessibilityValue(isExpanded ? "펼쳐짐" : "접힘")
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(2)
             }
             .background {
                 Button {
@@ -1129,6 +1131,7 @@ private struct CollapsedShortcutBlocks: View {
                     ForEach(Array(tokens.enumerated()), id: \.offset) { _, token in
                         Text(token)
                             .lineLimit(1)
+                            .truncationMode(.tail)
                             .font(.caption.monospaced())
                             .padding(.horizontal, 5)
                             .padding(.vertical, 3)
