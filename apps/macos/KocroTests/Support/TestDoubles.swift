@@ -70,10 +70,10 @@ final class CarbonSpy: CarbonServing {
 
     var registrationCount: Int { registrations.count }
 
-    func register(id: UInt32, shortcut: ShortcutDefinition) -> Bool {
+    func register(id: UInt32, shortcut: ShortcutDefinition) -> RegistrationState {
         lifecycleMainThreads.append(Thread.isMainThread)
         registrations.append((id, shortcut))
-        return registrations.count != failingRegistration
+        return registrations.count == failingRegistration ? .registrationFailed : .registered
     }
 
     func unregisterAll() {

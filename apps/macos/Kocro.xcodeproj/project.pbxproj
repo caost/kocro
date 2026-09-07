@@ -31,7 +31,7 @@
 		A10000000000000000000019 /* MacroExecutionQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001B /* MacroExecutionQueueTests.swift */; };
 		A1000000000000000000001A /* AppController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001C /* AppController.swift */; };
 		A1000000000000000000001B /* AppControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001D /* AppControllerTests.swift */; };
-		A1000000000000000000001C /* ViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001E /* ViewModelTests.swift */; };
+		A1000000000000000000001C /* SettingsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001E /* SettingsViewModelTests.swift */; };
 		A1000000000000000000001D /* LoginItemControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001F /* LoginItemControllerTests.swift */; };
 		A1000000000000000000001E /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000020 /* MenuBarView.swift */; };
 		A1000000000000000000001F /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000021 /* SettingsView.swift */; };
@@ -43,6 +43,15 @@
 		A10000000000000000000025 /* PostingLatencyRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000027 /* PostingLatencyRecorder.swift */; };
 		A10000000000000000000026 /* PostingLatencyRecorderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000028 /* PostingLatencyRecorderTests.swift */; };
 		A10000000000000000000027 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000029 /* Assets.xcassets */; };
+		A10000000000000000000040 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000040 /* SettingsViewModel.swift */; };
+		A10000000000000000000041 /* MacroCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000041 /* MacroCard.swift */; };
+		A10000000000000000000042 /* TokenEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000042 /* TokenEditor.swift */; };
+		A10000000000000000000043 /* SupportedKeyHelp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000043 /* SupportedKeyHelp.swift */; };
+		A10000000000000000000044 /* GeneralSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000044 /* GeneralSettingsView.swift */; };
+		A10000000000000000000045 /* KeyRecorderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000045 /* KeyRecorderTests.swift */; };
+		A10000000000000000000046 /* TokenEditorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000046 /* TokenEditorTests.swift */; };
+		A10000000000000000000047 /* GeneralSettingsViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000047 /* GeneralSettingsViewTests.swift */; };
+		A10000000000000000000048 /* MenuBarViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000048 /* MenuBarViewModelTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -82,7 +91,7 @@
 		A2000000000000000000001B /* MacroExecutionQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacroExecutionQueueTests.swift; sourceTree = "<group>"; };
 		A2000000000000000000001C /* AppController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppController.swift; sourceTree = "<group>"; };
 		A2000000000000000000001D /* AppControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppControllerTests.swift; sourceTree = "<group>"; };
-		A2000000000000000000001E /* ViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModelTests.swift; sourceTree = "<group>"; };
+		A2000000000000000000001E /* SettingsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModelTests.swift; sourceTree = "<group>"; };
 		A2000000000000000000001F /* LoginItemControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginItemControllerTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000020 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		A20000000000000000000021 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -94,6 +103,15 @@
 		A20000000000000000000027 /* PostingLatencyRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostingLatencyRecorder.swift; sourceTree = "<group>"; };
 		A20000000000000000000028 /* PostingLatencyRecorderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostingLatencyRecorderTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000029 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A20000000000000000000040 /* SettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModel.swift; sourceTree = "<group>"; };
+		A20000000000000000000041 /* MacroCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacroCard.swift; sourceTree = "<group>"; };
+		A20000000000000000000042 /* TokenEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenEditor.swift; sourceTree = "<group>"; };
+		A20000000000000000000043 /* SupportedKeyHelp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportedKeyHelp.swift; sourceTree = "<group>"; };
+		A20000000000000000000044 /* GeneralSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralSettingsView.swift; sourceTree = "<group>"; };
+		A20000000000000000000045 /* KeyRecorderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyRecorderTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000046 /* TokenEditorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenEditorTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000047 /* GeneralSettingsViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralSettingsViewTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000048 /* MenuBarViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarViewModelTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -162,7 +180,11 @@
 				A2000000000000000000001A /* EventBatchFactoryTests.swift */,
 				A2000000000000000000001B /* MacroExecutionQueueTests.swift */,
 				A2000000000000000000001D /* AppControllerTests.swift */,
-				A2000000000000000000001E /* ViewModelTests.swift */,
+				A2000000000000000000001E /* SettingsViewModelTests.swift */,
+				A20000000000000000000048 /* MenuBarViewModelTests.swift */,
+				A20000000000000000000047 /* GeneralSettingsViewTests.swift */,
+				A20000000000000000000046 /* TokenEditorTests.swift */,
+				A20000000000000000000045 /* KeyRecorderTests.swift */,
 				A2000000000000000000001F /* LoginItemControllerTests.swift */,
 				A20000000000000000000025 /* MacroPipelineIntegrationTests.swift */,
 				A20000000000000000000026 /* PrivacyTests.swift */,
@@ -259,6 +281,11 @@
 			isa = PBXGroup;
 			children = (
 				A20000000000000000000021 /* SettingsView.swift */,
+				A20000000000000000000044 /* GeneralSettingsView.swift */,
+				A20000000000000000000043 /* SupportedKeyHelp.swift */,
+				A20000000000000000000042 /* TokenEditor.swift */,
+				A20000000000000000000041 /* MacroCard.swift */,
+				A20000000000000000000040 /* SettingsViewModel.swift */,
 				A20000000000000000000022 /* KeyRecorder.swift */,
 				A20000000000000000000023 /* LoginItemController.swift */,
 			);
@@ -347,8 +374,8 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		A90000000000000000000001 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001 /* KocroApp.swift in Sources */, A10000000000000000000008 /* MacroModels.swift in Sources */, A10000000000000000000009 /* SettingsValidator.swift in Sources */, A10000000000000000000022 /* MacKeyCodePolicy.swift in Sources */, A1000000000000000000000C /* SettingsStore.swift in Sources */, A1000000000000000000000D /* JSONSettingsStore.swift in Sources */, A10000000000000000000010 /* ShortcutCoordinator.swift in Sources */, A10000000000000000000011 /* CarbonHotKeySource.swift in Sources */, A10000000000000000000015 /* PermissionClient.swift in Sources */, A10000000000000000000016 /* EventBatchFactory.swift in Sources */, A10000000000000000000017 /* MacroExecutionQueue.swift in Sources */, A10000000000000000000025 /* PostingLatencyRecorder.swift in Sources */, A1000000000000000000001A /* AppController.swift in Sources */, A1000000000000000000001E /* MenuBarView.swift in Sources */, A1000000000000000000001F /* SettingsView.swift in Sources */, A10000000000000000000020 /* KeyRecorder.swift in Sources */, A10000000000000000000021 /* LoginItemController.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
-		A90000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000002 /* KocroSmokeTests.swift in Sources */, A10000000000000000000007 /* SettingsValidatorTests.swift in Sources */, A1000000000000000000000A /* JSONSettingsStoreTests.swift in Sources */, A1000000000000000000000B /* TestDoubles.swift in Sources */, A1000000000000000000000E /* ShortcutCoordinatorTests.swift in Sources */, A10000000000000000000013 /* CarbonHotKeySourceTests.swift in Sources */, A10000000000000000000014 /* PermissionClientTests.swift in Sources */, A10000000000000000000018 /* EventBatchFactoryTests.swift in Sources */, A10000000000000000000019 /* MacroExecutionQueueTests.swift in Sources */, A1000000000000000000001B /* AppControllerTests.swift in Sources */, A1000000000000000000001C /* ViewModelTests.swift in Sources */, A1000000000000000000001D /* LoginItemControllerTests.swift in Sources */, A10000000000000000000023 /* MacroPipelineIntegrationTests.swift in Sources */, A10000000000000000000024 /* PrivacyTests.swift in Sources */, A10000000000000000000026 /* PostingLatencyRecorderTests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
+		A90000000000000000000001 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001 /* KocroApp.swift in Sources */, A10000000000000000000008 /* MacroModels.swift in Sources */, A10000000000000000000009 /* SettingsValidator.swift in Sources */, A10000000000000000000022 /* MacKeyCodePolicy.swift in Sources */, A1000000000000000000000C /* SettingsStore.swift in Sources */, A1000000000000000000000D /* JSONSettingsStore.swift in Sources */, A10000000000000000000010 /* ShortcutCoordinator.swift in Sources */, A10000000000000000000011 /* CarbonHotKeySource.swift in Sources */, A10000000000000000000015 /* PermissionClient.swift in Sources */, A10000000000000000000016 /* EventBatchFactory.swift in Sources */, A10000000000000000000017 /* MacroExecutionQueue.swift in Sources */, A10000000000000000000025 /* PostingLatencyRecorder.swift in Sources */, A1000000000000000000001A /* AppController.swift in Sources */, A1000000000000000000001E /* MenuBarView.swift in Sources */, A1000000000000000000001F /* SettingsView.swift in Sources */, A10000000000000000000044 /* GeneralSettingsView.swift in Sources */, A10000000000000000000043 /* SupportedKeyHelp.swift in Sources */, A10000000000000000000042 /* TokenEditor.swift in Sources */, A10000000000000000000041 /* MacroCard.swift in Sources */, A10000000000000000000040 /* SettingsViewModel.swift in Sources */, A10000000000000000000020 /* KeyRecorder.swift in Sources */, A10000000000000000000021 /* LoginItemController.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
+		A90000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000002 /* KocroSmokeTests.swift in Sources */, A10000000000000000000007 /* SettingsValidatorTests.swift in Sources */, A1000000000000000000000A /* JSONSettingsStoreTests.swift in Sources */, A1000000000000000000000B /* TestDoubles.swift in Sources */, A1000000000000000000000E /* ShortcutCoordinatorTests.swift in Sources */, A10000000000000000000013 /* CarbonHotKeySourceTests.swift in Sources */, A10000000000000000000014 /* PermissionClientTests.swift in Sources */, A10000000000000000000018 /* EventBatchFactoryTests.swift in Sources */, A10000000000000000000019 /* MacroExecutionQueueTests.swift in Sources */, A1000000000000000000001B /* AppControllerTests.swift in Sources */, A1000000000000000000001C /* SettingsViewModelTests.swift in Sources */, A10000000000000000000048 /* MenuBarViewModelTests.swift in Sources */, A10000000000000000000047 /* GeneralSettingsViewTests.swift in Sources */, A10000000000000000000046 /* TokenEditorTests.swift in Sources */, A10000000000000000000045 /* KeyRecorderTests.swift in Sources */, A1000000000000000000001D /* LoginItemControllerTests.swift in Sources */, A10000000000000000000023 /* MacroPipelineIntegrationTests.swift in Sources */, A10000000000000000000024 /* PrivacyTests.swift in Sources */, A10000000000000000000026 /* PostingLatencyRecorderTests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */

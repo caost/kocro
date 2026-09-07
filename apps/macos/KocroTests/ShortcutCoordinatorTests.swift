@@ -35,7 +35,7 @@ final class ShortcutCoordinatorTests: XCTestCase {
         XCTAssertEqual(states[macro.id], .registered)
         XCTAssertEqual(
             carbon.registrations[0].shortcut.registrationIdentity,
-            .init(key: .carbon(34), modifiers: [.option, .command])
+            .init(keyCode: 34, modifiers: [.option, .command])
         )
         XCTAssertEqual(triggered, [macro.id])
     }

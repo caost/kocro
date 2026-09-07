@@ -23,7 +23,7 @@ struct ShortcutDefinition: Codable, Hashable, Sendable {
 
     var usesRemovedFunctionKey: Bool {
         guard case .function(let number) = key else { return false }
-        return (21...24).contains(number)
+        return MacKeyCodePolicy.removedLegacyFunctionNumbers.contains(number)
     }
 
     var displayName: String {
@@ -64,7 +64,7 @@ struct ShortcutDefinition: Codable, Hashable, Sendable {
         guard modifiers.rawValue & ~ModifierSet.supported.rawValue == 0 else {
             return nil
         }
-        let registrationKey: ShortcutRegistrationKey
+        let registrationKeyCode: UInt16
         switch key {
         case .empty:
             return nil
@@ -72,30 +72,24 @@ struct ShortcutDefinition: Codable, Hashable, Sendable {
             guard let keyCode = MacKeyCodePolicy.keyCode(forLetter: letter) else {
                 return nil
             }
-            registrationKey = .carbon(keyCode)
+            registrationKeyCode = keyCode
         case .keyCode(let keyCode):
-            registrationKey = .carbon(keyCode)
-        case .function(let number) where (1...20).contains(number):
+            registrationKeyCode = keyCode
+        case .function(let number):
             guard let keyCode = MacKeyCodePolicy.keyCode(forFunction: number) else {
                 return nil
             }
-            registrationKey = .carbon(keyCode)
-        case .function:
-            return nil
+            registrationKeyCode = keyCode
         }
         return ShortcutRegistrationIdentity(
-            key: registrationKey,
+            keyCode: registrationKeyCode,
             modifiers: modifiers
         )
     }
 }
 
-enum ShortcutRegistrationKey: Hashable, Sendable {
-    case carbon(UInt16)
-}
-
 struct ShortcutRegistrationIdentity: Hashable, Sendable {
-    let key: ShortcutRegistrationKey
+    let keyCode: UInt16
     let modifiers: ModifierSet
 }
 
@@ -173,7 +167,7 @@ struct AppSettings: Codable, Equatable, Sendable {
     var macros: [MacroDefinition]
 
     static let defaults = Self(
-        macros: (13...20).enumerated().map { index, functionNumber in
+        macros: MacKeyCodePolicy.standaloneFunctionNumbers.enumerated().map { index, functionNumber in
             MacroDefinition(
                 id: UUID(),
                 title: "매크로 \(index + 1)",

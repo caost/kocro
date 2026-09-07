@@ -11,7 +11,22 @@ struct TokenEntry: Equatable {
     }
 }
 
+enum KeyInputMode: CaseIterable {
+    case shortcut
+    case trailing
+}
+
 enum MacKeyCodePolicy {
+    static let supportedFunctionNumbers = 1...20
+    static let standaloneFunctionNumbers = 13...supportedFunctionNumbers.upperBound
+    // 과거 저장 형식의 마이그레이션 대상이므로 현재 지원 범위와 별도로 유지한다.
+    static let removedLegacyFunctionNumbers = 21...24
+
+    static func shortcutRequiresModifiers(_ key: ShortcutKey) -> Bool {
+        guard case .function(let number) = key else { return true }
+        return !standaloneFunctionNumbers.contains(number)
+    }
+
     private static let letterKeyCodes: [String: UInt16] = [
         "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6,
         "x": 7, "c": 8, "v": 9, "b": 11, "q": 12, "w": 13, "e": 14,
@@ -79,7 +94,7 @@ enum MacKeyCodePolicy {
         keyNames[keyCode] ?? "Key \(keyCode)"
     }
 
-    static func tokenEntries(mode: TokenEditorMode) -> [TokenEntry] {
+    static func tokenEntries(mode: KeyInputMode) -> [TokenEntry] {
         var keyCodes = characterKeys
             .union(keypadKeys)
             .union(mode == .shortcut ? shortcutEditingKeys : editingAndNavigationKeys)
@@ -103,7 +118,7 @@ enum MacKeyCodePolicy {
             )
         }
         if mode == .shortcut {
-            entries.append(contentsOf: (1...20).map { number in
+            entries.append(contentsOf: supportedFunctionNumbers.map { number in
                 TokenEntry(
                     canonical: "{KC_F\(number)}",
                     aliases: [],

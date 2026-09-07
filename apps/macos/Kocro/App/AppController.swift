@@ -331,7 +331,7 @@ final class AppController: ObservableObject {
     ) -> Bool {
         let retainedFailures = preservingRegistrationFailures
             ? registration.filter { id, state in
-                state == .registrationFailed
+                state != .registered
                     && candidate.states[id] == nil
                     && snapshotSettings.macros.contains(where: { $0.id == id })
             }

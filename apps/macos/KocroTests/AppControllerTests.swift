@@ -227,7 +227,7 @@ final class AppControllerTests: XCTestCase {
         normalized.macros[1].isEnabled = false
         shortcuts.states = [
             successful.id: .registered,
-            conflicted.id: .registrationFailed,
+            conflicted.id: .conflict,
         ]
         shortcuts.nextCandidateSettings = normalized
         app.save()
@@ -235,7 +235,7 @@ final class AppControllerTests: XCTestCase {
         shortcuts.states = [:]
         app.refreshPermissions()
 
-        XCTAssertEqual(app.registration[conflicted.id], .registrationFailed)
+        XCTAssertEqual(app.registration[conflicted.id], .conflict)
     }
 
     func testLoadCollisionKeepsPersistedSettingsEnabledAndRefreshRetriesWithoutSaving() {

@@ -2,12 +2,13 @@ import Foundation
 
 enum RegistrationState: Equatable {
     case registered
+    case conflict
     case registrationFailed
 }
 
 protocol CarbonServing: AnyObject {
     var onRegistrationID: ((UInt32, ContinuousClock.Instant) -> Void)? { get set }
-    func register(id: UInt32, shortcut: ShortcutDefinition) -> Bool
+    func register(id: UInt32, shortcut: ShortcutDefinition) -> RegistrationState
     func unregister(id: UInt32)
     func unregisterAll()
 }
@@ -103,9 +104,13 @@ final class ShortcutCoordinator {
         for index in candidateSettings.macros.indices
         where candidateSettings.macros[index].isEnabled {
             let macro = candidateSettings.macros[index]
-            guard let identity = macro.shortcut.registrationIdentity,
-                  candidateRegistrations[identity] == nil else {
+            guard let identity = macro.shortcut.registrationIdentity else {
                 states[macro.id] = .registrationFailed
+                candidateSettings.macros[index].isEnabled = false
+                continue
+            }
+            guard candidateRegistrations[identity] == nil else {
+                states[macro.id] = .conflict
                 candidateSettings.macros[index].isEnabled = false
                 continue
             }
@@ -120,12 +125,12 @@ final class ShortcutCoordinator {
                 candidateSettings.macros[index].isEnabled = false
                 continue
             }
-            let succeeded = carbon.register(
+            let state = carbon.register(
                 id: registrationID,
                 shortcut: macro.shortcut
             )
-            states[macro.id] = succeeded ? .registered : .registrationFailed
-            if succeeded {
+            states[macro.id] = state
+            if state == .registered {
                 candidateRegistrations[identity] = registrationID
                 carbonIDs[registrationID] = macro.id
                 newlyRegisteredIDs.insert(registrationID)

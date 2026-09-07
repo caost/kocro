@@ -21,6 +21,47 @@ related:
 
 ## 2026-09-07 issue #8 후속 검증
 
+### PR #10 리뷰 라운드 1 수정 검증
+
+검증 대상은 `bb3bf0d3e806c53c4155481cb0607eb0e51159cc`에 라운드 1 수정 사항을
+적용한 작업 트리다. 환경은 macOS 26.6.2(25G83), Xcode 26.6(17F113), arm64다.
+소스별 SHA-256, 자동 테스트 로그와 실제 앱의 접근성 트리·화면은 로컬
+`.harness/reviews/pr10-fixes/`에 보관했다.
+
+| 자동 검증 | 명령·결과 |
+| --- | --- |
+| 회귀 테스트 | 일반 등록 실패와 충돌의 배지 구분, 비활성 초안의 예약 단축키 안내를 수정 전에 실패로 재현하고 수정 뒤 통과 확인 |
+| 전체 XCTest | `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination platform=macOS`: 178개 통과, 실패 0개 |
+| Release 빌드 | `xcodebuild build -project apps/macos/Kocro.xcodeproj -scheme Kocro -configuration Release -derivedDataPath /tmp/kocro-pr10-release CODE_SIGN_IDENTITY=-`: 성공 |
+| 서명 | 생성한 Release 앱에 `codesign --verify --strict` 실행: 성공. ad hoc 서명과 Hardened Runtime 적용 |
+| 코드 리뷰 | STD-001~005, SPEC-001~003 수정분 독립 리뷰에서 추가 지적 없음 |
+
+실제 앱 검증은 위 Release 앱을 `CFFIXED_USER_HOME=/tmp/kocro-pr10-ui-home`으로
+실행해 별도 설정 파일을 사용했다. Accessibility API로 컨트롤을 조작하고 값을
+확인했으며, 키 기록과 단축키 실행에는 합성 키 이벤트를 사용했다. 기존 사용자
+설정 파일은 검증 전후 SHA-256이 같은지 확인했다.
+
+| 실제 앱 검증 | 관찰 결과 |
+| --- | --- |
+| 일반·매크로 탭 전환 | 일반 탭에서 Accessibility 제어를 확인하고 매크로 목록으로 복귀 |
+| 카드 드래그 | `리뷰 01`을 둘째 카드 뒤로 이동해 목록 순서가 `리뷰 02`, `리뷰 01`, `리뷰 03`으로 변경 |
+| 삭제·실행 취소 | 3개 항목 중 하나를 삭제해 2개가 된 뒤 실행 취소로 원래 위치에 복구 |
+| 토큰 자동완성 | `{KC_F2` 입력 시 `{KC_F2}`, `{KC_F20}` 후보를 확인하고 `{KC_F20}` 선택 결과 확인 |
+| 키 기록·예약 단축키 안내 | 비활성 항목에서 ⌘C 기록 직후 `이미 사용 중인 단축키입니다` 표시. 이어서 ⌥⌘I를 기록해 `{KC_OPT}+{KC_CMD}+{KC_I}`로 교체 |
+| 저장 성공 | 기록한 단축키와 변경 순서가 테스트 설정 파일에 반영되고 모든 카드가 접힘 |
+| 저장 실패·재시도 | 테스트 설정 파일에만 `chflags uchg`를 적용해 교체 실패 유도. 오류 표시와 기존 파일 바이트 보존 확인. `chflags nouchg`로 해제한 뒤 재저장 성공 |
+| 메뉴 바 최근 실행 | 저장한 ⌥⌘I 실행 뒤 `리뷰 01`, `⌥⌘I`, `게시 요청 완료` 표시 확인 |
+| About 링크 | 표준 About 패널의 GitHub 링크를 눌러 기본 브라우저가 `https://github.com/caost/kocro`를 여는 것 확인 |
+| 매크로 수 증가 | 30개 항목에서 추가·저장 버튼이 창 안에 표시됨. 새 항목을 추가해 31개가 되고 해당 카드가 펼쳐짐 |
+| 창 너비 축소 | 현재 Settings 창은 900×648 크기로 열리며 크기 조절 요청을 거부함. 더 좁은 창에서의 접근성은 미검증 |
+
+**SPEC-004는 창 너비 축소 검증이 남아 있어 종료하지 않는다.** 창 크기 조절을 위해
+시도한 SwiftUI·AppKit 변경은 실제 앱 검증을 통과하지 못해 최종 수정에서 제외했다.
+기존 라운드 1 스냅샷은 보존했으며, 위 기록은 수정 커밋을 대상으로 한 후속 리뷰를
+대신하지 않는다.
+
+### 초기 후속 검증 기록
+
 - F21~F24와 HID/Input Monitoring 전용 테스트를 제품 경로와 함께 제거한 뒤 전체
   XCTest 169개가 통과했고 실패·건너뛴 테스트는 없다.
 - 기본 매크로와 자동완성은 F13~F20까지만 제공하고 F21~F35 직접 입력·키 기록을

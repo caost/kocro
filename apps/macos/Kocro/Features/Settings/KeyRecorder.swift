@@ -1,11 +1,6 @@
 import AppKit
 import SwiftUI
 
-enum TokenEditorMode: Equatable {
-    case shortcut
-    case trailing
-}
-
 struct TokenIssue: Equatable {
     let token: String
     let range: Range<String.Index>?
@@ -33,11 +28,11 @@ struct TokenEditorDraft: Equatable {
     private(set) var selectedCompletion = 0
     private(set) var value: TokenStoredValue
     private let baselineText: String
-    let mode: TokenEditorMode
+    let mode: KeyInputMode
 
     var isDirty: Bool { text != baselineText }
 
-    init(value: TokenStoredValue, mode: TokenEditorMode) {
+    init(value: TokenStoredValue, mode: KeyInputMode) {
         self.value = value
         self.mode = mode
         text = TokenShortcutCodec.format(value)
@@ -150,7 +145,7 @@ enum TokenShortcutCodec {
         "{KC_CTRL}", "{KC_OPT}", "{KC_SHIFT}", "{KC_CMD}",
     ]
 
-    static func validate(_ source: String, mode: TokenEditorMode) -> TokenValidation {
+    static func validate(_ source: String, mode: KeyInputMode) -> TokenValidation {
         if source.trimmingCharacters(in: .whitespaces).isEmpty {
             let value: TokenStoredValue = mode == .shortcut
                 ? .shortcut(.init(key: .empty, modifiers: []))
@@ -207,7 +202,7 @@ enum TokenShortcutCodec {
             ))
         }
         if mode == .shortcut, let base {
-            if !isFunction(base, in: 13...20), modifiers.isEmpty {
+            if MacKeyCodePolicy.shortcutRequiresModifiers(base), modifiers.isEmpty {
                 issues.append(.init(
                     token: baseToken ?? source,
                     range: baseRange,
@@ -243,7 +238,7 @@ enum TokenShortcutCodec {
         )
     }
 
-    static func parse(_ source: String, mode: TokenEditorMode) throws -> TokenValidation {
+    static func parse(_ source: String, mode: KeyInputMode) throws -> TokenValidation {
         let result = validate(source, mode: mode)
         guard result.issues.isEmpty else {
             throw TokenCodecError.invalid(result.issues)
@@ -274,7 +269,7 @@ enum TokenShortcutCodec {
         }
     }
 
-    static func completions(for fragment: String, mode: TokenEditorMode) -> [String] {
+    static func completions(for fragment: String, mode: KeyInputMode) -> [String] {
         let needle = fragment
             .trimmingCharacters(in: .whitespaces)
             .uppercased()
@@ -318,18 +313,10 @@ enum TokenShortcutCodec {
             .joined(separator: "+")
     }
 
-    private static func token(for key: ShortcutKey, mode: TokenEditorMode) -> String? {
+    private static func token(for key: ShortcutKey, mode: KeyInputMode) -> String? {
         MacKeyCodePolicy.tokenEntries(mode: mode)
             .first(where: { $0.key == key })?
             .canonical
-    }
-
-    private static func isFunction(
-        _ key: ShortcutKey,
-        in range: ClosedRange<Int>
-    ) -> Bool {
-        guard case .function(let number) = key else { return false }
-        return range.contains(number)
     }
 
     private static func trailingValue(
@@ -370,11 +357,6 @@ struct SystemAccessibilityNotificationPoster: AccessibilityNotificationPosting {
     }
 }
 
-enum KeyRecorderMode: CaseIterable {
-    case shortcut
-    case trailing
-}
-
 enum KeyRecorderDecision: Equatable {
     case keepValue
     case clear
@@ -387,7 +369,7 @@ enum KeyRecorderTranslator {
         keyCode: UInt16,
         modifiers: ModifierSet,
         isRepeat: Bool,
-        mode: KeyRecorderMode
+        mode: KeyInputMode
     ) -> KeyRecorderDecision {
         if isRepeat { return .keepValue }
 
@@ -418,7 +400,7 @@ enum KeyRecorderTranslator {
         modifiers: ModifierSet
     ) -> ShortcutDefinition? {
         if let number = MacKeyCodePolicy.functionNumber(for: keyCode) {
-            if number <= 12, modifiers.isEmpty { return nil }
+            if MacKeyCodePolicy.shortcutRequiresModifiers(.function(number)), modifiers.isEmpty { return nil }
             return ShortcutDefinition(key: .function(number), modifiers: modifiers)
         }
         guard MacKeyCodePolicy.isAllowedShortcutKeyCode(keyCode),
@@ -458,7 +440,7 @@ enum KeyRecorderTranslator {
 struct KeyRecorder: NSViewRepresentable {
     @Binding var shortcut: ShortcutDefinition
     var prompt = "단축키 입력"
-    var mode: KeyRecorderMode = .shortcut
+    var mode: KeyInputMode = .shortcut
     var accessibilityLabel: String?
 
     func makeNSView(context: Context) -> RecorderView {
@@ -502,7 +484,7 @@ final class RecorderView: NSView, NSAccessibilityButton {
             accessibilityNotifications.postValueChanged(for: self)
         }
     }
-    var mode: KeyRecorderMode = .shortcut {
+    var mode: KeyInputMode = .shortcut {
         didSet { updateAccessibilityHelp() }
     }
 

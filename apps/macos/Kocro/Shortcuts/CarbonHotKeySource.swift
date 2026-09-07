@@ -67,12 +67,12 @@ final class CarbonHotKeySource: CarbonServing {
         )
     }
 
-    func register(id: UInt32, shortcut: ShortcutDefinition) -> Bool {
+    func register(id: UInt32, shortcut: ShortcutDefinition) -> RegistrationState {
         dispatchPrecondition(condition: .onQueue(.main))
         guard resources.hasEventHandler,
               !resources.contains(id: id),
               let keyCode = Self.keyCode(for: shortcut.key) else {
-            return false
+            return .registrationFailed
         }
         let hotKeyID = EventHotKeyID(signature: Self.signature, id: id)
         let (status, hotKey) = api.register(
@@ -82,9 +82,10 @@ final class CarbonHotKeySource: CarbonServing {
             target: GetApplicationEventTarget(),
             options: UInt32(kEventHotKeyExclusive)
         )
-        guard status == noErr, let hotKey else { return false }
+        if status == eventHotKeyExistsErr { return .conflict }
+        guard status == noErr, let hotKey else { return .registrationFailed }
         resources.add(hotKey, id: id)
-        return true
+        return .registered
     }
 
     func unregister(id: UInt32) {

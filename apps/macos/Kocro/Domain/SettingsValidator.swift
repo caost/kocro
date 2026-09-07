@@ -91,10 +91,10 @@ struct SettingsValidator {
                 throw ValidationError.modifierRequired
             }
         case .function(let number):
-            guard (1...20).contains(number) else {
+            guard MacKeyCodePolicy.supportedFunctionNumbers.contains(number) else {
                 throw ValidationError.unsupportedFunction
             }
-            if number <= 12, shortcut.modifiers.isEmpty {
+            if MacKeyCodePolicy.shortcutRequiresModifiers(shortcut.key), shortcut.modifiers.isEmpty {
                 throw ValidationError.modifierRequired
             }
         }
@@ -148,10 +148,9 @@ enum ReservedShortcutPolicy {
 
     static func contains(_ shortcut: ShortcutDefinition) -> Bool {
         guard shortcut.modifiers == .command,
-              let identity = shortcut.registrationIdentity,
-              case .carbon(let keyCode) = identity.key else {
+              let identity = shortcut.registrationIdentity else {
             return false
         }
-        return commandKeyCodes.contains(keyCode)
+        return commandKeyCodes.contains(identity.keyCode)
     }
 }
