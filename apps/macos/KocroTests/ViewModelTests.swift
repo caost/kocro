@@ -725,6 +725,7 @@ final class ViewModelTests: XCTestCase {
                          "F13~F20", "F21~F24", "지원하지"] {
             XCTAssertTrue(text.contains(required), "missing help topic: \(required)")
         }
+        XCTAssertTrue(text.contains("Escape, Backspace와 Delete는 실행 단축키로 사용할 수 없습니다"))
     }
 
     func testCorruptSettingsWarningRemainsAboveTabsUntilSuccessfulSave() {

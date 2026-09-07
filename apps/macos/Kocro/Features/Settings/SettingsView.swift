@@ -114,7 +114,7 @@ struct SupportedKeyHelp {
     static let sections = [
         Section(
             title: "실행 단축키",
-            body: "실행 단축키는 modifier와 문자·숫자·기호, navigation·editing·whitespace 키를 조합해 입력합니다. 일반 키와 F1~F12에는 보조 키가 필요합니다. F13~F20은 단독 또는 보조 키 조합을 지원합니다. F21~F24는 보조 키 없이 단독으로만 지원하며 메뉴에서 선택합니다."
+            body: "실행 단축키는 modifier와 문자·숫자·기호, navigation·whitespace 키를 조합해 입력합니다. Escape, Backspace와 Delete는 실행 단축키로 사용할 수 없습니다. 일반 키와 F1~F12에는 보조 키가 필요합니다. F13~F20은 단독 또는 보조 키 조합을 지원합니다. F21~F24는 보조 키 없이 단독으로만 지원하며 메뉴에서 선택합니다."
         ),
         Section(
             title: "후속 키",
