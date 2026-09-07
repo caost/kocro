@@ -69,3 +69,25 @@ final class MenuBarIconTests: XCTestCase {
         XCTAssertLessThanOrEqual(abs(margins[1] - margins[3]), 2)
     }
 }
+
+final class SettingsSourceLayoutTests: XCTestCase {
+    func testCollapsedShortcutBlocksStayInPrimaryHeaderRow() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kocro/Features/Settings/SettingsView.swift")
+        let source = try String(contentsOf: sourceURL)
+        let macroCard = try XCTUnwrap(source.range(of: "private struct MacroCard: View"))
+        let header = try XCTUnwrap(
+            source.range(of: "HStack(spacing: 8) {", range: macroCard.lowerBound..<source.endIndex)
+        )
+        let shortcutBlocks = try XCTUnwrap(
+            source.range(of: "CollapsedShortcutBlocks(", range: header.lowerBound..<source.endIndex)
+        )
+        let trailingControls = try XCTUnwrap(
+            source.range(of: "Spacer()", range: header.lowerBound..<source.endIndex)
+        )
+
+        XCTAssertLessThan(shortcutBlocks.lowerBound, trailingControls.lowerBound)
+    }
+}

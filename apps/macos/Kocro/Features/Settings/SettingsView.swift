@@ -977,68 +977,62 @@ private struct MacroCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Image(systemName: "line.3.horizontal")
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel(labels.reorder)
-                        .accessibilityAction(named: Text("위로 이동")) {
-                            model.move(id: macro.id, direction: .up)
-                        }
-                        .accessibilityAction(named: Text("아래로 이동")) {
-                            model.move(id: macro.id, direction: .down)
-                        }
-                    MacroActivationToggle(
-                        isOn: $macro.isEnabled,
-                        accessibilityLabel: labels.enabled
-                    )
-                    TextField(
-                        "제목",
-                        text: $macro.title,
-                        prompt: Text(macro.settingsDisplayTitle)
-                    )
-                    .frame(minWidth: 160)
-                    .layoutPriority(1)
-                    .accessibilityLabel(labels.title)
-                    .focused(focusedField, equals: .title(macro.id))
-                    Spacer()
-                    Text(badge.label)
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(Capsule().fill(Color.secondary.opacity(0.14)))
-                        .accessibilityLabel(badge.label)
-                        .fixedSize()
-                    Button(role: .destructive) {
-                        model.delete(id: macro.id)
-                    } label: {
-                        Image(systemName: "trash")
+            HStack(spacing: 8) {
+                Image(systemName: "line.3.horizontal")
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel(labels.reorder)
+                    .accessibilityAction(named: Text("위로 이동")) {
+                        model.move(id: macro.id, direction: .up)
                     }
-                    .buttonStyle(.borderless)
-                    .fixedSize()
-                    .accessibilityLabel(labels.delete)
-                    Button {
-                        model.expand(macro.id)
-                    } label: {
-                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .accessibilityAction(named: Text("아래로 이동")) {
+                        model.move(id: macro.id, direction: .down)
                     }
-                    .buttonStyle(.borderless)
+                MacroActivationToggle(
+                    isOn: $macro.isEnabled,
+                    accessibilityLabel: labels.enabled
+                )
+                TextField(
+                    "제목",
+                    text: $macro.title,
+                    prompt: Text(macro.settingsDisplayTitle)
+                )
+                .frame(minWidth: 120, idealWidth: 220)
+                .accessibilityLabel(labels.title)
+                .focused(focusedField, equals: .title(macro.id))
+                let accessibility = model.collapsedShortcutAccessibilityPresentation(
+                    for: macro.id
+                )
+                CollapsedShortcutBlocks(
+                    tokens: model.collapsedShortcutTokens(for: macro.id),
+                    accessibility: accessibility
+                )
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
+                Spacer()
+                Text(badge.label)
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color.secondary.opacity(0.14)))
+                    .accessibilityLabel(badge.label)
                     .fixedSize()
-                    .accessibilityLabel(labels.expand)
-                    .accessibilityValue(isExpanded ? "펼쳐짐" : "접힘")
+                Button(role: .destructive) {
+                    model.delete(id: macro.id)
+                } label: {
+                    Image(systemName: "trash")
                 }
-
-                HStack {
-                    let accessibility = model.collapsedShortcutAccessibilityPresentation(
-                        for: macro.id
-                    )
-                    CollapsedShortcutBlocks(
-                        tokens: model.collapsedShortcutTokens(for: macro.id),
-                        accessibility: accessibility
-                    )
-                    Spacer(minLength: 0)
+                .buttonStyle(.borderless)
+                .fixedSize()
+                .accessibilityLabel(labels.delete)
+                Button {
+                    model.expand(macro.id)
+                } label: {
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                 }
-                .padding(.leading, 68)
+                .buttonStyle(.borderless)
+                .fixedSize()
+                .accessibilityLabel(labels.expand)
+                .accessibilityValue(isExpanded ? "펼쳐짐" : "접힘")
             }
             .background {
                 Button {
