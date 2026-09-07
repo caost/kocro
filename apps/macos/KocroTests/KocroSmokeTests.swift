@@ -13,15 +13,18 @@ final class KocroSmokeTests: XCTestCase {
             "AppIcon"
         )
     }
+}
 
+final class MenuBarIconTests: XCTestCase {
     func testMenuBarIconUsesEighteenPointCanvas() throws {
-        let icon = try XCTUnwrap(NSImage(contentsOf: menuBarIconURL))
+        let icon = try XCTUnwrap(NSImage(named: "MenuBarIcon"))
 
         XCTAssertEqual(icon.size, NSSize(width: 18, height: 18))
+        XCTAssertTrue(icon.isTemplate)
     }
 
     func testMenuBarIconArtworkHasBalancedPadding() throws {
-        let icon = try XCTUnwrap(NSImage(contentsOf: menuBarIconURL))
+        let icon = try XCTUnwrap(NSImage(named: "MenuBarIcon"))
         let pixelSize = 72
         let bitmap = try XCTUnwrap(
             NSBitmapImageRep(
@@ -58,14 +61,11 @@ final class KocroSmokeTests: XCTestCase {
         }
 
         XCTAssertGreaterThanOrEqual(maxX, minX)
-        XCTAssertLessThanOrEqual(abs(minX - (pixelSize - 1 - maxX)), 2)
-        XCTAssertLessThanOrEqual(abs(minY - (pixelSize - 1 - maxY)), 2)
-    }
-
-    private var menuBarIconURL: URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Kocro/Resources/Assets.xcassets/MenuBarIcon.imageset/menu-bar-icon.svg")
+        let margins = [minX, minY, pixelSize - 1 - maxX, pixelSize - 1 - maxY]
+        margins.forEach { XCTAssertTrue(4...12 ~= $0, "Unexpected artwork margin: \($0)px") }
+        XCTAssertTrue(54...62 ~= maxX - minX + 1)
+        XCTAssertTrue(57...63 ~= maxY - minY + 1)
+        XCTAssertLessThanOrEqual(abs(margins[0] - margins[2]), 2)
+        XCTAssertLessThanOrEqual(abs(margins[1] - margins[3]), 2)
     }
 }
