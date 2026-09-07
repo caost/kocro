@@ -550,6 +550,120 @@ final class ViewModelTests: XCTestCase {
         XCTAssertTrue(model.isDirty)
     }
 
+    func testAccordionStartsCollapsedAndAddingExpandsOnlyNewMacro() {
+        let model = SettingsViewModel(settings: Fixtures.settings(text: "값"), validator: .init())
+        XCTAssertNil(model.expandedMacroID)
+        model.add()
+        XCTAssertEqual(model.expandedMacroID, model.settings.macros.last?.id)
+        model.expand(model.settings.macros[0].id)
+        XCTAssertEqual(model.expandedMacroID, model.settings.macros[0].id)
+    }
+
+    func testMultipleDeletesUndoNewestFirstAtOriginalPositions() {
+        let values = [Fixtures.carbon(13), Fixtures.carbon(14), Fixtures.carbon(15)]
+        let model = SettingsViewModel(settings: .init(macros: values), validator: .init())
+        model.delete(id: values[1].id)
+        model.delete(id: values[0].id)
+        model.undoDelete()
+        XCTAssertEqual(model.settings.macros.map(\.id), [values[0].id, values[2].id])
+        model.undoDelete()
+        XCTAssertEqual(model.settings.macros.map(\.id), values.map(\.id))
+    }
+
+    func testSaveSuccessClearsUndoAndCollapsesWhileFailureExpandsFirstError() {
+        let invalid = MacroDefinition(id: UUID(), isEnabled: true,
+            shortcut: .init(key: .empty, modifiers: []), text: "값", trailingKey: nil)
+        let model = SettingsViewModel(settings: .init(macros: [invalid]), validator: .init())
+        model.save()
+        XCTAssertEqual(model.expandedMacroID, invalid.id)
+        XCTAssertEqual(model.focusedField, .shortcut(invalid.id))
+        model.settings.macros[0].isEnabled = false
+        model.markSaved(model.settings)
+        XCTAssertNil(model.expandedMacroID)
+        XCTAssertFalse(model.canUndoDelete)
+    }
+
+    func testInactiveEmptyShortcutPassesTokenPreflightButActiveValidationFocusesIt() {
+        let macro = MacroDefinition.newDraft()
+        let model = SettingsViewModel(settings: .init(macros: [macro]), validator: .init())
+        XCTAssertTrue(model.prepareTokenEditsForSave())
+        model.settings.macros[0].isEnabled = true
+        model.save()
+        XCTAssertEqual(model.expandedMacroID, macro.id)
+        XCTAssertEqual(model.focusedField, .shortcut(macro.id))
+        XCTAssertTrue(model.errors(for: macro.id).contains("단축키를 수정하세요"))
+    }
+
+    func testSettingsOwnsInvalidTokenDraftAcrossCollapseAndSavePreflight() {
+        let macro = Fixtures.carbon(13)
+        let model = SettingsViewModel(settings: .init(macros: [macro]), validator: .init())
+        model.updateTokenText("{KC_NOPE}", for: .shortcut(macro.id))
+        XCTAssertTrue(model.isDirty)
+        XCTAssertEqual(model.badge(for: macro.id), .unsaved)
+        XCTAssertEqual(model.collapsedShortcutText(for: macro.id), "{KC_NOPE}")
+        model.expand(macro.id)
+        model.expand(macro.id)
+        XCTAssertEqual(model.tokenDraft(for: .shortcut(macro.id)).text, "{KC_NOPE}")
+        model.save()
+        XCTAssertEqual(model.expandedMacroID, macro.id)
+        XCTAssertEqual(model.focusedField, .shortcut(macro.id))
+    }
+
+    func testSupportedKeyHelpCoversRequiredTopics() {
+        let text = SupportedKeyHelp.sections.map(\.body).joined(separator: "\n")
+        for required in ["실행 단축키", "후속 키", "별칭", "보조 키",
+                         "F13~F20", "F21~F24", "지원하지"] {
+            XCTAssertTrue(text.contains(required), "missing help topic: \(required)")
+        }
+    }
+
+    func testCorruptSettingsWarningRemainsAboveTabsUntilSuccessfulSave() {
+        let model = SettingsViewModel(settings: .defaults, validator: .init())
+        model.showsReplaceWarning = true
+        XCTAssertEqual(model.replaceWarningMessage,
+            "저장하면 기존 설정 파일을 기본 설정으로 교체합니다.")
+        model.saveErrorMessage = "설정을 저장하지 못했습니다"
+        XCTAssertNotNil(model.replaceWarningMessage)
+        model.markSaved(model.settings)
+        model.showsReplaceWarning = false
+        XCTAssertNil(model.replaceWarningMessage)
+    }
+
+    func testBadgePriorityCoversDirtyInactiveAndRegistrationFailures() {
+        XCTAssertEqual(MacroStatusBadge.resolve(isEnabled: true, isDirty: true,
+            registration: .registrationFailed).label, "충돌")
+        XCTAssertEqual(MacroStatusBadge.resolve(isEnabled: true, isDirty: true,
+            registration: .inputMonitoringRequired).label, "권한 필요")
+        XCTAssertEqual(MacroStatusBadge.resolve(isEnabled: false, isDirty: false,
+            registration: nil).label, "비활성")
+    }
+
+    func testCardAccessibilityLabelsIncludeDistinctUUIDAndAction() throws {
+        let first = try XCTUnwrap(UUID(uuidString: "11111111-1111-1111-1111-111111111111"))
+        let second = try XCTUnwrap(UUID(uuidString: "22222222-2222-2222-2222-222222222222"))
+        let one = MacroCardAccessibilityLabels(id: first)
+        let two = MacroCardAccessibilityLabels(id: second)
+        XCTAssertEqual(one.delete, "매크로 \(first.uuidString) 삭제")
+        XCTAssertEqual(one.reorder, "매크로 \(first.uuidString) 순서 변경")
+        XCTAssertNotEqual(one.expand, two.expand)
+        XCTAssertNotEqual(one.title, one.enabled)
+    }
+
+    func testTokenAccessibilityReportsValueCompletionAndError() {
+        var draft = TokenEditorDraft(value: .shortcut(
+            .init(key: .empty, modifiers: [])), mode: .shortcut)
+        draft.updateText("{KC_F2")
+        draft.moveCompletion(.down)
+        var state = TokenEditorAccessibilityState(fieldLabel: "실행 단축키", draft: draft)
+        XCTAssertEqual(state.value, "{KC_F2")
+        XCTAssertTrue(state.help.contains("선택"))
+        draft.updateText("{KC_NOPE}")
+        XCTAssertFalse(draft.commit())
+        state = .init(fieldLabel: "실행 단축키", draft: draft)
+        XCTAssertTrue(state.help.contains("지원하는 {KC_...} 토큰"))
+        XCTAssertEqual(state.announcement, state.help)
+    }
+
     func testInactiveEmptyShortcutPassesTokenPreflight() {
         let macro = MacroDefinition.newDraft()
         let model = SettingsViewModel(

@@ -20,6 +20,113 @@ enum TokenField: Hashable {
     case trailing(UUID)
 }
 
+struct DeletedMacro: Equatable {
+    let macro: MacroDefinition
+    let index: Int
+}
+
+enum MacroFieldFocus: Hashable {
+    case title(UUID)
+    case shortcut(UUID)
+    case text(UUID)
+    case trailing(UUID)
+}
+
+enum MacroStatusBadge: Equatable {
+    case inactive
+    case unsaved
+    case registered
+    case conflict
+    case permissionRequired
+    case registrationFailed
+
+    var label: String {
+        switch self {
+        case .inactive: return "비활성"
+        case .unsaved: return "저장 전"
+        case .registered: return "등록됨"
+        case .conflict: return "충돌"
+        case .permissionRequired: return "권한 필요"
+        case .registrationFailed: return "등록 실패"
+        }
+    }
+
+    static func resolve(
+        isEnabled: Bool,
+        isDirty: Bool,
+        registration: RegistrationState?
+    ) -> Self {
+        if registration == .registrationFailed { return .conflict }
+        if registration == .hidStartFailed { return .registrationFailed }
+        if registration == .inputMonitoringRequired { return .permissionRequired }
+        if isDirty { return .unsaved }
+        if !isEnabled { return .inactive }
+        return registration == .registered ? .registered : .registrationFailed
+    }
+}
+
+struct MacroCardAccessibilityLabels: Equatable {
+    let enabled: String
+    let title: String
+    let delete: String
+    let expand: String
+    let reorder: String
+
+    init(id: UUID) {
+        let prefix = "매크로 \(id.uuidString)"
+        enabled = "\(prefix) 활성화"
+        title = "\(prefix) 제목"
+        delete = "\(prefix) 삭제"
+        expand = "\(prefix) 펼치기 또는 접기"
+        reorder = "\(prefix) 순서 변경"
+    }
+}
+
+struct TokenEditorAccessibilityState: Equatable {
+    let label: String
+    let value: String
+    let help: String
+    let announcement: String?
+
+    init(fieldLabel: String, draft: TokenEditorDraft) {
+        label = fieldLabel
+        value = draft.text.isEmpty ? "설정 안 됨" : draft.text
+        if let issue = draft.issues.first {
+            help = issue.message
+            announcement = issue.message
+        } else if draft.completions.indices.contains(draft.selectedCompletion) {
+            help = "자동완성 선택 \(draft.completions[draft.selectedCompletion])"
+            announcement = help
+        } else {
+            help = "토큰을 직접 입력하거나 키로 기록하세요"
+            announcement = nil
+        }
+    }
+}
+
+struct SupportedKeyHelp {
+    struct Section: Identifiable, Equatable {
+        let title: String
+        let body: String
+        var id: String { title }
+    }
+
+    static let sections = [
+        Section(
+            title: "실행 단축키",
+            body: "실행 단축키는 modifier와 문자·숫자·기호, navigation·editing·whitespace 키를 조합해 입력합니다. 일반 키와 F1~F12에는 보조 키가 필요합니다. F13~F20은 단독 또는 보조 키 조합을 지원합니다. F21~F24는 보조 키 없이 단독으로만 지원하며 메뉴에서 선택합니다."
+        ),
+        Section(
+            title: "후속 키",
+            body: "후속 키는 문자·숫자·기호, navigation·editing·whitespace와 F1~F20을 지원합니다. F21~F35, Fn, Caps Lock, 미디어 키는 지원하지 않습니다."
+        ),
+        Section(
+            title: "토큰과 별칭",
+            body: "보조 키 토큰은 {KC_CTRL}, {KC_OPT}, {KC_SHIFT}, {KC_CMD}입니다. 좌우 modifier 별칭 {KC_LCTL}/{KC_RCTL}, {KC_LALT}/{KC_RALT}, {KC_LSFT}/{KC_RSFT}, {KC_LCMD}/{KC_RCMD}도 입력할 수 있습니다."
+        ),
+    ]
+}
+
 @MainActor
 final class SettingsViewModel: ObservableObject {
     @Published var settings: AppSettings {
@@ -33,6 +140,9 @@ final class SettingsViewModel: ObservableObject {
     @Published var selectedSection: SettingsSection = .macros
     @Published private(set) var isDirty = false
     @Published private(set) var tokenDrafts: [TokenField: TokenEditorDraft]
+    @Published private(set) var expandedMacroID: UUID?
+    @Published private(set) var deletedMacros: [DeletedMacro] = []
+    @Published var focusedField: MacroFieldFocus?
 
     let validator: SettingsValidator
     var onSave: ((AppSettings) -> Void)?
@@ -54,11 +164,56 @@ final class SettingsViewModel: ObservableObject {
         settings.macros.append(macro)
         tokenDrafts[.shortcut(macro.id)] = Self.shortcutDraft(for: macro)
         tokenDrafts[.trailing(macro.id)] = Self.trailingDraft(for: macro)
+        expandedMacroID = macro.id
+        focusedField = .title(macro.id)
         recomputeDirty()
     }
 
     func delete(at offsets: IndexSet) {
-        settings.macros.remove(atOffsets: offsets)
+        let ids = offsets.sorted(by: >).compactMap { index in
+            settings.macros.indices.contains(index) ? settings.macros[index].id : nil
+        }
+        for id in ids { delete(id: id) }
+    }
+
+    func delete(id: UUID) {
+        guard let index = settings.macros.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        deletedMacros.append(
+            DeletedMacro(macro: settings.macros.remove(at: index), index: index)
+        )
+        if expandedMacroID == id { expandedMacroID = nil }
+        if focusedField?.macroID == id { focusedField = nil }
+        recomputeDirty()
+    }
+
+    func undoDelete() {
+        guard let deletion = deletedMacros.popLast() else { return }
+        settings.macros.insert(
+            deletion.macro,
+            at: min(deletion.index, settings.macros.count)
+        )
+        recomputeDirty()
+    }
+
+    func clearDeletionHistory() {
+        deletedMacros.removeAll()
+    }
+
+    var canUndoDelete: Bool { !deletedMacros.isEmpty }
+
+    var replaceWarningMessage: String? {
+        showsReplaceWarning
+            ? "저장하면 기존 설정 파일을 기본 설정으로 교체합니다."
+            : nil
+    }
+
+    func expand(_ id: UUID) {
+        expandedMacroID = expandedMacroID == id ? nil : id
+        if expandedMacroID == nil, focusedField?.macroID == id {
+            focusedField = nil
+        }
     }
 
     func move(from offsets: IndexSet, to destination: Int) {
@@ -86,14 +241,33 @@ final class SettingsViewModel: ObservableObject {
         tokenDrafts[.shortcut(id)]?.text ?? ""
     }
 
+    func badge(for id: UUID) -> MacroStatusBadge {
+        guard let macro = settings.macros.first(where: { $0.id == id }) else {
+            return .registrationFailed
+        }
+        let savedMacro = savedSettings.macros.first(where: { $0.id == id })
+        let tokenDirty = tokenDrafts[.shortcut(id)]?.isDirty == true
+            || tokenDrafts[.trailing(id)]?.isDirty == true
+        return .resolve(
+            isEnabled: macro.isEnabled,
+            isDirty: savedMacro != macro || tokenDirty,
+            registration: registration[id]
+        )
+    }
+
     @discardableResult
     func prepareTokenEditsForSave() -> Bool {
         for index in settings.macros.indices {
             let id = settings.macros[index].id
             let shortcutField = TokenField.shortcut(id)
             let trailingField = TokenField.trailing(id)
-            guard commitTokenDraft(shortcutField),
-                  commitTokenDraft(trailingField) else {
+            guard commitTokenDraft(shortcutField) else {
+                reveal(id: id, field: .shortcut(id))
+                recomputeDirty()
+                return false
+            }
+            guard commitTokenDraft(trailingField) else {
+                reveal(id: id, field: .trailing(id))
                 recomputeDirty()
                 return false
             }
@@ -148,6 +322,7 @@ final class SettingsViewModel: ObservableObject {
         } catch {
             isDirty = true
             saveErrorMessage = "표시된 항목을 수정한 뒤 다시 저장하세요"
+            revealFirstValidationIssue()
             return
         }
         saveErrorMessage = nil
@@ -172,6 +347,7 @@ final class SettingsViewModel: ObservableObject {
         registration = app.registration
         if let error = app.saveError {
             saveErrorMessage = "설정을 저장하지 못했습니다 (\(String(describing: type(of: error))))"
+            if expandedMacroID == nil { expandedMacroID = settings.macros.first?.id }
         }
     }
 
@@ -184,6 +360,10 @@ final class SettingsViewModel: ObservableObject {
         hasLoadedDraft = true
         isDirty = false
         saveErrorMessage = nil
+        showsReplaceWarning = false
+        deletedMacros.removeAll()
+        expandedMacroID = nil
+        focusedField = nil
     }
 
     private func registrationMessage(_ state: RegistrationState) -> String {
@@ -217,6 +397,45 @@ final class SettingsViewModel: ObservableObject {
             || tokenDrafts.values.contains(where: \.isDirty)
     }
 
+    private func revealFirstValidationIssue() {
+        for macro in settings.macros {
+            let issues = validator.issues(for: macro, in: settings)
+            guard !issues.isEmpty else {
+                continue
+            }
+            let issue = issues.first { issue in
+                switch issue {
+                case .emptyShortcut, .modifierRequired, .unsupportedFunction,
+                     .unsupportedModifiers, .hidOnlyKeyRejectsModifiers,
+                     .duplicateShortcut:
+                    return true
+                default:
+                    return false
+                }
+            } ?? issues.first!
+            let focus: MacroFieldFocus
+            switch issue {
+            case .invalidTrailing:
+                focus = .trailing(macro.id)
+            case .textTooLong, .emptyText:
+                focus = .text(macro.id)
+            case .duplicateID:
+                focus = .title(macro.id)
+            case .emptyShortcut, .modifierRequired, .unsupportedFunction,
+                 .unsupportedModifiers, .hidOnlyKeyRejectsModifiers,
+                 .duplicateShortcut:
+                focus = .shortcut(macro.id)
+            }
+            reveal(id: macro.id, field: focus)
+            return
+        }
+    }
+
+    private func reveal(id: UUID, field: MacroFieldFocus) {
+        expandedMacroID = id
+        focusedField = field
+    }
+
     private static func makeTokenDrafts(
         for settings: AppSettings
     ) -> [TokenField: TokenEditorDraft] {
@@ -234,6 +453,15 @@ final class SettingsViewModel: ObservableObject {
 
     private static func trailingDraft(for macro: MacroDefinition) -> TokenEditorDraft {
         TokenEditorDraft(value: .trailing(macro.trailingKey), mode: .trailing)
+    }
+}
+
+private extension MacroFieldFocus {
+    var macroID: UUID {
+        switch self {
+        case .title(let id), .shortcut(let id), .text(let id), .trailing(let id):
+            return id
+        }
     }
 }
 
@@ -279,46 +507,64 @@ struct SettingsView: View {
     @ObservedObject var app: AppController
     @ObservedObject var login: LoginItemController
     let prepare: () -> Void
+    @FocusState private var focusedField: MacroFieldFocus?
+    @State private var showsSupportedKeyHelp = false
 
     var body: some View {
-        TabView(selection: $model.selectedSection) {
-            macrosSection
-                .tabItem { Text(SettingsSection.macros.label) }
-                .tag(SettingsSection.macros)
-            GeneralSettingsView(
-                model: .init(app: app, login: login, draft: model.settings)
-            )
-            .tabItem { Text(SettingsSection.general.label) }
-            .tag(SettingsSection.general)
+        VStack(spacing: 0) {
+            if let warning = model.replaceWarningMessage {
+                Label(warning, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    .padding(.top)
+            }
+
+            TabView(selection: $model.selectedSection) {
+                GeneralSettingsView(
+                    model: .init(app: app, login: login, draft: model.settings)
+                )
+                .tabItem { Label(SettingsSection.general.label, systemImage: "gearshape") }
+                .tag(SettingsSection.general)
+
+                macrosSection
+                    .tabItem { Label(SettingsSection.macros.label, systemImage: "command") }
+                    .tag(SettingsSection.macros)
+            }
+            .padding()
         }
-        .padding()
-        .frame(minWidth: 1_100, minHeight: 560)
+        .frame(minWidth: 720, minHeight: 560)
         .onAppear(perform: prepare)
+        .onDisappear(perform: model.clearDeletionHistory)
+        .onChange(of: model.focusedField) { focusedField = $0 }
+        .sheet(isPresented: $showsSupportedKeyHelp) {
+            SupportedKeyHelpView()
+        }
     }
 
     private var macrosSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Kocro 설정")
-                .font(.title2)
-
-            if model.showsReplaceWarning {
-                Text("기존 설정 파일을 읽을 수 없습니다. 저장하면 새 설정으로 교체합니다.")
-                    .foregroundStyle(.orange)
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("매크로").font(.title2)
+                    Text("단축키를 누르면 설정한 문자열과 선택적인 후속 키를 입력합니다.")
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("지원 키 코드") { showsSupportedKeyHelp = true }
             }
             if let message = model.saveErrorMessage {
                 Text(message)
                     .foregroundStyle(.red)
             }
-            Text("비밀번호, API 키와 인증 토큰을 저장하지 마세요.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
 
             List {
                 ForEach($model.settings.macros) { $macro in
-                    MacroRow(
+                    MacroCard(
                         macro: $macro,
                         model: model,
-                        errors: model.errors(for: macro.id)
+                        errors: model.errors(for: macro.id),
+                        focusedField: $focusedField
                     )
                 }
                 .onDelete(perform: model.delete)
@@ -327,6 +573,11 @@ struct SettingsView: View {
 
             HStack {
                 Button("추가", action: model.add)
+                if model.canUndoDelete {
+                    Text("매크로를 삭제했습니다.")
+                        .foregroundStyle(.secondary)
+                    Button("실행 취소", action: model.undoDelete)
+                }
                 Spacer()
                 if model.isDirty {
                     Text("저장하지 않은 변경 사항")
@@ -338,6 +589,29 @@ struct SettingsView: View {
             }
         }
         .padding(.top, 8)
+    }
+}
+
+private struct SupportedKeyHelpView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("지원 키 코드").font(.title2)
+            ForEach(SupportedKeyHelp.sections) { section in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(section.title).font(.headline)
+                    Text(section.body).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            HStack {
+                Spacer()
+                Button("닫기") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 620)
     }
 }
 
@@ -377,6 +651,12 @@ private struct GeneralSettingsView: View {
                         .accessibilityLabel("Input Monitoring 시스템 설정 열기")
                 }
             }
+
+
+            Section("민감한 정보") {
+                Text("비밀번호, API 키와 인증 토큰을 매크로에 저장하지 마세요.")
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .padding(.top, 8)
@@ -404,8 +684,12 @@ private struct TokenEditor: View {
     let field: TokenField
     @ObservedObject var model: SettingsViewModel
     let accessibilityLabel: String
+    let focusedField: FocusState<MacroFieldFocus?>.Binding
 
     private var draft: TokenEditorDraft { model.tokenDraft(for: field) }
+    private var accessibilityState: TokenEditorAccessibilityState {
+        .init(fieldLabel: accessibilityLabel, draft: draft)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -416,12 +700,15 @@ private struct TokenEditor: View {
                         set: { model.updateTokenText($0, for: field) }
                     ),
                     accessibilityLabel: accessibilityLabel,
+                    accessibilityValue: accessibilityState.value,
+                    accessibilityHelp: accessibilityState.help,
                     hasCompletions: { !draft.completions.isEmpty },
                     onCommit: commit,
                     onMoveCompletion: moveCompletion,
                     onAcceptCompletion: acceptCompletion
                 )
                 .frame(minWidth: 220, minHeight: 26)
+                .focused(focusedField, equals: focusValue)
 
                 KeyRecorder(
                     shortcut: recordedShortcut,
@@ -487,12 +774,30 @@ private struct TokenEditor: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+        .onChange(of: accessibilityState.announcement) { announcement in
+            guard let announcement else { return }
+            NSAccessibility.post(
+                element: NSApp as Any,
+                notification: .announcementRequested,
+                userInfo: [
+                    .announcement: announcement,
+                    .priority: NSAccessibilityPriorityLevel.high.rawValue,
+                ]
+            )
+        }
     }
 
     private var mode: TokenEditorMode {
         switch field {
         case .shortcut: return .shortcut
         case .trailing: return .trailing
+        }
+    }
+
+    private var focusValue: MacroFieldFocus {
+        switch field {
+        case .shortcut(let id): return .shortcut(id)
+        case .trailing(let id): return .trailing(id)
         }
     }
 
@@ -528,6 +833,8 @@ private struct TokenEditor: View {
 private struct TokenTextField: NSViewRepresentable {
     @Binding var text: String
     let accessibilityLabel: String
+    let accessibilityValue: String
+    let accessibilityHelp: String
     let hasCompletions: () -> Bool
     let onCommit: () -> Void
     let onMoveCompletion: (CompletionMove) -> Void
@@ -542,6 +849,8 @@ private struct TokenTextField: NSViewRepresentable {
         textField.delegate = context.coordinator
         textField.placeholderString = "{KC_CMD}+{KC_F13}"
         textField.setAccessibilityLabel(accessibilityLabel)
+        textField.setAccessibilityValue(accessibilityValue)
+        textField.setAccessibilityHelp(accessibilityHelp)
         return textField
     }
 
@@ -551,6 +860,8 @@ private struct TokenTextField: NSViewRepresentable {
             nsView.stringValue = text
         }
         nsView.setAccessibilityLabel(accessibilityLabel)
+        nsView.setAccessibilityValue(accessibilityValue)
+        nsView.setAccessibilityHelp(accessibilityHelp)
     }
 
     final class Coordinator: NSObject, NSTextFieldDelegate {
@@ -591,56 +902,126 @@ private struct TokenTextField: NSViewRepresentable {
     }
 }
 
-private struct MacroRow: View {
+private struct MacroCard: View {
     @Binding var macro: MacroDefinition
     @ObservedObject var model: SettingsViewModel
     let errors: [String]
+    let focusedField: FocusState<MacroFieldFocus?>.Binding
+
+    private var isExpanded: Bool { model.expandedMacroID == macro.id }
+    private var badge: MacroStatusBadge { model.badge(for: macro.id) }
+    private var labels: MacroCardAccessibilityLabels {
+        MacroCardAccessibilityLabels(id: macro.id)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                TextField("제목", text: $macro.title, prompt: Text(macro.displayTitle))
-                    .frame(width: 180)
-                    .accessibilityLabel(macro.displayTitle)
+            HStack(spacing: 8) {
+                Image(systemName: "line.3.horizontal")
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel(labels.reorder)
                 Toggle("활성화", isOn: $macro.isEnabled)
                     .toggleStyle(.checkbox)
+                    .labelsHidden()
+                    .accessibilityLabel(labels.enabled)
+                TextField(
+                    "제목",
+                    text: $macro.title,
+                    prompt: Text(macro.settingsDisplayTitle)
+                )
+                .frame(minWidth: 160)
+                .accessibilityLabel(labels.title)
+                .focused(focusedField, equals: .title(macro.id))
+                Text(model.collapsedShortcutText(for: macro.id).isEmpty
+                     ? "단축키 없음"
+                     : model.collapsedShortcutText(for: macro.id))
+                    .lineLimit(1)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(badge.label)
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color.secondary.opacity(0.14)))
+                    .accessibilityLabel(badge.label)
+                Button(role: .destructive) {
+                    model.delete(id: macro.id)
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(labels.delete)
+                Button {
+                    model.expand(macro.id)
+                } label: {
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(labels.expand)
+                .accessibilityValue(isExpanded ? "펼쳐짐" : "접힘")
+            }
+
+            if isExpanded {
+                Divider()
+                Text("실행 단축키").font(.headline)
                 TokenEditor(
                     field: .shortcut(macro.id),
                     model: model,
-                    accessibilityLabel: recorderAccessibilityLabels.shortcut
-                )
-                Spacer()
-                Text(String(macro.id.uuidString.prefix(8)))
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-            }
-
-            TextEditor(text: $macro.text)
-                .font(.body.monospaced())
-                .frame(minHeight: 72)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(Color.secondary.opacity(0.3))
-                )
-            Text("\(macro.text.count) / \(MacroDefinition.maximumTextCountText)")
-                .font(.caption)
-                .foregroundStyle(
-                    macro.text.count > MacroDefinition.maximumTextCount ? .red : .secondary
+                    accessibilityLabel: recorderAccessibilityLabels.shortcut,
+                    focusedField: focusedField
                 )
 
-            TokenEditor(
-                field: .trailing(macro.id),
-                model: model,
-                accessibilityLabel: recorderAccessibilityLabels.trailing
-            )
-
-            ForEach(errors, id: \.self) { error in
-                Text(error)
+                Text("입력할 문자열").font(.headline)
+                TextEditor(text: $macro.text)
+                    .font(.body.monospaced())
+                    .frame(minHeight: 90)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(Color.secondary.opacity(0.3))
+                    )
+                    .accessibilityLabel("매크로 \(macro.id.uuidString) 입력할 문자열")
+                    .focused(focusedField, equals: .text(macro.id))
+                Text("\(macro.text.count) / \(MacroDefinition.maximumTextCountText)")
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(
+                        macro.text.count > MacroDefinition.maximumTextCount ? .red : .secondary
+                    )
+
+                Text("후속 키").font(.headline)
+                TokenEditor(
+                    field: .trailing(macro.id),
+                    model: model,
+                    accessibilityLabel: recorderAccessibilityLabels.trailing,
+                    focusedField: focusedField
+                )
+
+                ForEach(errors, id: \.self) { error in
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
             }
         }
-        .padding(.vertical, 6)
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.secondary.opacity(0.25))
+        )
+        .onChange(of: badge.label) { label in
+            NSAccessibility.post(
+                element: NSApp as Any,
+                notification: .announcementRequested,
+                userInfo: [
+                    .announcement: "\(macro.settingsDisplayTitle) 상태 \(label)",
+                    .priority: NSAccessibilityPriorityLevel.medium.rawValue,
+                ]
+            )
+        }
     }
 
     private var recorderAccessibilityLabels: MacroRecorderAccessibilityLabels {
