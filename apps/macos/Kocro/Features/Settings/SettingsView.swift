@@ -276,6 +276,19 @@ final class SettingsViewModel: ObservableObject {
             .filter { !$0.isEmpty }
     }
 
+    func collapsedShortcutAccessibilityValue(for id: UUID) -> String {
+        guard let draft = tokenDrafts[.shortcut(id)],
+              case .shortcut(let shortcut)? = TokenShortcutCodec.validate(
+                draft.text,
+                mode: .shortcut
+              ).value,
+              !shortcut.tokens.isEmpty else {
+            let rawTokens = collapsedShortcutTokens(for: id)
+            return rawTokens.isEmpty ? "설정 안 됨" : rawTokens.joined(separator: ", ")
+        }
+        return shortcut.tokens.joined(separator: ", ")
+    }
+
     func badge(for id: UUID) -> MacroStatusBadge {
         guard let macro = settings.macros.first(where: { $0.id == id }) else {
             return .registrationFailed
@@ -942,53 +955,68 @@ private struct MacroCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "line.3.horizontal")
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel(labels.reorder)
-                    .accessibilityAction(named: Text("위로 이동")) {
-                        model.move(id: macro.id, direction: .up)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Image(systemName: "line.3.horizontal")
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(labels.reorder)
+                        .accessibilityAction(named: Text("위로 이동")) {
+                            model.move(id: macro.id, direction: .up)
+                        }
+                        .accessibilityAction(named: Text("아래로 이동")) {
+                            model.move(id: macro.id, direction: .down)
+                        }
+                    MacroActivationToggle(
+                        isOn: $macro.isEnabled,
+                        accessibilityLabel: labels.enabled
+                    )
+                    TextField(
+                        "제목",
+                        text: $macro.title,
+                        prompt: Text(macro.settingsDisplayTitle)
+                    )
+                    .frame(minWidth: 160)
+                    .layoutPriority(1)
+                    .accessibilityLabel(labels.title)
+                    .focused(focusedField, equals: .title(macro.id))
+                    Spacer()
+                    Text(badge.label)
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color.secondary.opacity(0.14)))
+                        .accessibilityLabel(badge.label)
+                        .fixedSize()
+                    Button(role: .destructive) {
+                        model.delete(id: macro.id)
+                    } label: {
+                        Image(systemName: "trash")
                     }
-                    .accessibilityAction(named: Text("아래로 이동")) {
-                        model.move(id: macro.id, direction: .down)
+                    .buttonStyle(.borderless)
+                    .fixedSize()
+                    .accessibilityLabel(labels.delete)
+                    Button {
+                        model.expand(macro.id)
+                    } label: {
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     }
-                MacroActivationToggle(
-                    isOn: $macro.isEnabled,
-                    accessibilityLabel: labels.enabled
-                )
-                TextField(
-                    "제목",
-                    text: $macro.title,
-                    prompt: Text(macro.settingsDisplayTitle)
-                )
-                .frame(minWidth: 160)
-                .accessibilityLabel(labels.title)
-                .focused(focusedField, equals: .title(macro.id))
-                CollapsedShortcutBlocks(
-                    tokens: model.collapsedShortcutTokens(for: macro.id)
-                )
-                Spacer()
-                Text(badge.label)
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(Color.secondary.opacity(0.14)))
-                    .accessibilityLabel(badge.label)
-                Button(role: .destructive) {
-                    model.delete(id: macro.id)
-                } label: {
-                    Image(systemName: "trash")
+                    .buttonStyle(.borderless)
+                    .fixedSize()
+                    .accessibilityLabel(labels.expand)
+                    .accessibilityValue(isExpanded ? "펼쳐짐" : "접힘")
                 }
-                .buttonStyle(.borderless)
-                .accessibilityLabel(labels.delete)
-                Button {
-                    model.expand(macro.id)
-                } label: {
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+
+                HStack {
+                    CollapsedShortcutBlocks(
+                        tokens: model.collapsedShortcutTokens(for: macro.id),
+                        accessibilityLabel: recorderAccessibilityLabels.shortcut,
+                        accessibilityValue: model.collapsedShortcutAccessibilityValue(
+                            for: macro.id
+                        )
+                    )
+                    Spacer(minLength: 0)
                 }
-                .buttonStyle(.borderless)
-                .accessibilityLabel(labels.expand)
-                .accessibilityValue(isExpanded ? "펼쳐짐" : "접힘")
+                .padding(.leading, 68)
             }
             .background {
                 Button {
@@ -1072,6 +1100,8 @@ private struct MacroCard: View {
 
 private struct CollapsedShortcutBlocks: View {
     let tokens: [String]
+    let accessibilityLabel: String
+    let accessibilityValue: String
 
     var body: some View {
         if tokens.isEmpty {
@@ -1097,8 +1127,8 @@ private struct CollapsedShortcutBlocks: View {
                 }
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("실행 단축키")
-            .accessibilityValue(tokens.joined(separator: ", "))
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityValue(accessibilityValue)
         }
     }
 }

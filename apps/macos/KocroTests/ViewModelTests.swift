@@ -675,6 +675,29 @@ final class ViewModelTests: XCTestCase {
         )
     }
 
+    func testCollapsedMaximumShortcutHasReadableAccessibilityValue() {
+        let macro = MacroDefinition(
+            id: UUID(),
+            isEnabled: false,
+            shortcut: .init(
+                key: .keyCode(95),
+                modifiers: [.control, .option, .shift, .command]
+            ),
+            text: "",
+            trailingKey: nil
+        )
+        let model = SettingsViewModel(
+            settings: .init(macros: [macro]),
+            validator: .init()
+        )
+
+        XCTAssertEqual(model.collapsedShortcutTokens(for: macro.id).count, 5)
+        XCTAssertEqual(
+            model.collapsedShortcutAccessibilityValue(for: macro.id),
+            "⌃ Control, ⌥ Option, ⇧ Shift, ⌘ Command, Keypad ,"
+        )
+    }
+
     func testReservedShortcutShowsSpecificMessageAndFocusesShortcut() {
         let macro = MacroDefinition(
             id: UUID(),
