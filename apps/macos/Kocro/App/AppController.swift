@@ -129,6 +129,8 @@ final class TriggerRouter: @unchecked Sendable {
 final class AppController: ObservableObject {
     @Published var draft = AppSettings(macros: [])
     @Published private(set) var runtime = AppSettings(macros: [])
+    /// Last successfully loaded or saved settings, independent of shortcut installation.
+    @Published private(set) var savedSettings = AppSettings(macros: [])
     @Published private(set) var registration: [UUID: RegistrationState] = [:]
     @Published private(set) var lastResult: ExecutionResult?
     @Published private(set) var queueIsIdle: Bool
@@ -213,6 +215,7 @@ final class AppController: ObservableObject {
     func start() {
         do {
             let value = try store.load()
+            savedSettings = value
             loadError = nil
             saveError = nil
             showsReplaceWarning = false
@@ -316,6 +319,7 @@ final class AppController: ObservableObject {
     private func persist(_ candidate: any ShortcutReplacementCandidate) -> Bool {
         do {
             try store.save(candidate.settings)
+            savedSettings = candidate.settings
             return true
         } catch {
             shortcuts.cancel(candidate)

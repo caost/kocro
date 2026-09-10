@@ -17,10 +17,15 @@ final class MacroTransferTests: XCTestCase {
         ])
         let model = SettingsViewModel(settings: saved, validator: .init())
         let id = saved.macros[0].id
+        let deleted = saved.macros[1]
         model.settings.macros[0].text = "저장 전 편집"
         model.updateTokenText("{KC_NOPE}", for: .shortcut(id))
+        model.updateTokenText("{KC_BAD}", for: .trailing(deleted.id))
+        model.delete(id: deleted.id)
         let before = model.settings
+        let history = model.deletedMacros
         let tokenText = model.tokenDraft(for: .shortcut(id)).text
+        XCTAssertTrue(model.canUndoDelete)
         var saves = 0
         model.onSave = { _ in saves += 1 }
 
@@ -31,10 +36,21 @@ final class MacroTransferTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(AppSettings.self, from: document.data), saved)
         XCTAssertEqual(model.settings, before)
         XCTAssertEqual(model.tokenDraft(for: .shortcut(id)).text, tokenText)
+        XCTAssertEqual(model.tokenDraft(for: .trailing(deleted.id)).text, "{KC_BAD}")
+        XCTAssertEqual(model.deletedMacros, history)
+        XCTAssertTrue(model.canUndoDelete)
         XCTAssertTrue(model.isDirty)
         XCTAssertEqual(saves, 0)
         let store = JSONSettingsStore(file: MemorySettingsFile(contents: document.data), validator: .init())
         XCTAssertEqual(try store.load(), saved)
+
+        model.undoDelete()
+
+        XCTAssertEqual(model.settings.macros[1], deleted)
+        XCTAssertEqual(model.settings.macros[0], before.macros[0])
+        XCTAssertEqual(model.tokenDraft(for: .trailing(deleted.id)).text, "{KC_BAD}")
+        XCTAssertFalse(model.canUndoDelete)
+        XCTAssertEqual(saves, 0)
     }
 
     func testRepeatedImportAppendsDisabledCopiesAndPreservesEditorState() throws {

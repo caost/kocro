@@ -138,7 +138,7 @@ struct SettingsView: View {
     private func beginExport() {
         transferMessage = nil
         do {
-            exportDocument = try model.prepareExport(from: app.runtime)
+            exportDocument = try model.prepareExport(from: app.savedSettings)
             showsExporter = true
         } catch {
             showTransferError(error, message: "매크로 내보내기를 준비하지 못했습니다.")
