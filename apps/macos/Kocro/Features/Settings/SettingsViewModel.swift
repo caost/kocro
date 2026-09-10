@@ -64,6 +64,47 @@ final class SettingsViewModel: ObservableObject {
         hasLoadedDraft = !settings.macros.isEmpty
     }
 
+    /// Export a saved snapshot without committing or validating the current editor drafts.
+    func prepareExport(from saved: AppSettings) throws -> MacroTransferDocument {
+        MacroTransferDocument(data: try SettingsJSONCodec(validator: validator).encode(saved))
+    }
+
+    /// Decode and validate the entire source before changing any editor state.
+    @discardableResult
+    func importMacros(from data: Data) throws -> Int {
+        let imported = try SettingsJSONCodec(validator: validator).decode(data)
+        guard !imported.macros.isEmpty else { return 0 }
+
+        var occupiedIDs = Set(settings.macros.map(\.id))
+        occupiedIDs.formUnion(deletedMacros.map { $0.macro.id })
+        occupiedIDs.formUnion(savedSettings.macros.map(\.id))
+        occupiedIDs.formUnion(registration.keys)
+        occupiedIDs.formUnion(imported.macros.map(\.id))
+        for field in tokenDrafts.keys {
+            switch field {
+            case .shortcut(let id), .trailing(let id): occupiedIDs.insert(id)
+            }
+        }
+        let additions = imported.macros.map { source in
+            var id = UUID()
+            while occupiedIDs.contains(id) { id = UUID() }
+            occupiedIDs.insert(id)
+            return MacroDefinition(
+                id: id,
+                title: source.title,
+                isEnabled: false,
+                shortcut: source.shortcut,
+                text: source.text,
+                trailingKey: source.trailingKey
+            )
+        }
+        let newDrafts = Self.makeTokenDrafts(for: .init(macros: additions))
+        tokenDrafts.merge(newDrafts) { existing, _ in existing }
+        settings.macros.append(contentsOf: additions)
+        recomputeDirty()
+        return additions.count
+    }
+
     func add() {
         let macro = MacroDefinition.newDraft()
         settings.macros.append(macro)
