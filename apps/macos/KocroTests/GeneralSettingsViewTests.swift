@@ -4,6 +4,30 @@ import XCTest
 
 @MainActor
 final class GeneralSettingsViewTests: XCTestCase {
+    func testGeneralSettingsOwnsMacroTransferActions() {
+        let app = AppController(
+            store: StoreSpy(loadResult: .success(.init(macros: []))),
+            shortcuts: ShortcutSpy(),
+            permissions: PermissionSpy(),
+            queue: QueueSpy()
+        )
+        let login = LoginItemController(service: LoginServiceSpy(status: .notRegistered))
+        var importCount = 0
+        var exportCount = 0
+        let general = GeneralSettingsViewModel(
+            app: app,
+            login: login,
+            beginMacroImport: { importCount += 1 },
+            beginMacroExport: { exportCount += 1 }
+        )
+
+        general.beginMacroImport()
+        general.beginMacroExport()
+
+        XCTAssertEqual(importCount, 1)
+        XCTAssertEqual(exportCount, 1)
+    }
+
     func testGeneralSettingsExposesLoginAndAccessibility() {
         let permissions = GeneralPermissionSpy(
             state: .init(accessibility: false)
