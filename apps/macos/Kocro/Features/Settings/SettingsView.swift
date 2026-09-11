@@ -40,7 +40,16 @@ struct SettingsView: View {
             }
 
             TabView(selection: $model.selectedSection) {
-                GeneralSettingsView(model: .init(app: app, login: login))
+                GeneralSettingsView(
+                    model: .init(
+                        app: app,
+                        login: login,
+                        beginMacroImport: beginImport,
+                        beginMacroExport: beginExport
+                    ),
+                    transferMessage: transferMessage,
+                    transferFailed: transferFailed
+                )
                     .tabItem { Label(SettingsSection.general.label, systemImage: "gearshape") }
                     .tag(SettingsSection.general)
 
@@ -83,20 +92,6 @@ struct SettingsView: View {
                 Spacer()
                 Button("지원 키 코드") { showsSupportedKeyHelp = true }
             }
-            HStack {
-                Button("가져오기…") {
-                    transferMessage = nil
-                    showsImporter = true
-                }
-                Button("내보내기…", action: beginExport)
-                Text("내보내기는 마지막 저장된 전체 매크로를 포함합니다. 저장 전 편집은 포함하지 않습니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            if let message = transferMessage {
-                Text(message)
-                    .foregroundStyle(transferFailed ? Color.red : Color.secondary)
-            }
             if let message = model.saveErrorMessage {
                 Text(message)
                     .foregroundStyle(.red)
@@ -133,6 +128,11 @@ struct SettingsView: View {
             }
         }
         .padding(.top, 8)
+    }
+
+    private func beginImport() {
+        transferMessage = nil
+        showsImporter = true
     }
 
     private func beginExport() {

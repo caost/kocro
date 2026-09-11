@@ -5,10 +5,19 @@ import SwiftUI
 struct GeneralSettingsViewModel {
     private let app: AppController
     private let login: LoginItemController
+    private let beginMacroImportAction: () -> Void
+    private let beginMacroExportAction: () -> Void
 
-    init(app: AppController, login: LoginItemController) {
+    init(
+        app: AppController,
+        login: LoginItemController,
+        beginMacroImport: @escaping () -> Void = {},
+        beginMacroExport: @escaping () -> Void = {}
+    ) {
         self.app = app
         self.login = login
+        beginMacroImportAction = beginMacroImport
+        beginMacroExportAction = beginMacroExport
     }
 
     var loginEnabled: Bool { login.isEnabled }
@@ -21,6 +30,8 @@ struct GeneralSettingsViewModel {
 
     func requestAccessibility() { app.requestAccessibility() }
     func openAccessibilitySettings() { app.openPrivacySettings(.accessibility) }
+    func beginMacroImport() { beginMacroImportAction() }
+    func beginMacroExport() { beginMacroExportAction() }
     func refreshPermissions() {
         app.refreshPermissions(reconcileShortcuts: false)
     }
@@ -28,6 +39,18 @@ struct GeneralSettingsViewModel {
 
 struct GeneralSettingsView: View {
     let model: GeneralSettingsViewModel
+    let transferMessage: String?
+    let transferFailed: Bool
+
+    init(
+        model: GeneralSettingsViewModel,
+        transferMessage: String? = nil,
+        transferFailed: Bool = false
+    ) {
+        self.model = model
+        self.transferMessage = transferMessage
+        self.transferFailed = transferFailed
+    }
 
     var body: some View {
         Form {
@@ -51,6 +74,20 @@ struct GeneralSettingsView: View {
                     .accessibilityLabel("Accessibility 권한 안내 요청")
                 Button("시스템 설정 열기", action: model.openAccessibilitySettings)
                     .accessibilityLabel("Accessibility 시스템 설정 열기")
+            }
+
+            Section("매크로 가져오기 및 내보내기") {
+                HStack {
+                    Button("가져오기…", action: model.beginMacroImport)
+                    Button("내보내기…", action: model.beginMacroExport)
+                }
+                Text("내보내기는 마지막 저장된 전체 매크로를 포함합니다. 저장 전 편집은 포함하지 않습니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let transferMessage {
+                    Text(transferMessage)
+                        .foregroundStyle(transferFailed ? Color.red : Color.secondary)
+                }
             }
 
             Section("민감한 정보") {
