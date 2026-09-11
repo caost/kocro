@@ -11,6 +11,8 @@ enum ValidationError: Error {
     case reservedShortcut
     case duplicateShortcut
     case invalidTrailing
+    case invalidDelay
+    case invalidKeyCombination
 }
 
 struct SettingsValidator {
@@ -23,34 +25,39 @@ struct SettingsValidator {
         return settings
     }
 
-    /// 한 항목이 어긋난 규칙을 모두 모은다. 저장 검증과 설정 화면의 항목별 표시가
-    /// 같은 규칙을 두 벌로 구현하지 않도록 이 함수 하나만 사용한다.
+    /// 저장 검증과 설정 화면에서 같은 규칙을 사용한다.
     func issues(for macro: MacroDefinition, in settings: AppSettings) -> [ValidationError] {
         var issues: [ValidationError] = []
-
         if settings.macros.filter({ $0.id == macro.id }).count > 1 {
             issues.append(.duplicateID)
         }
-        if macro.text.count > MacroDefinition.maximumTextCount {
+        if macro.combinedTextCount > MacroDefinition.maximumTextCount {
             issues.append(.textTooLong)
+        }
+        if macro.steps.contains(where: { step in
+            if case .delay(let milliseconds) = step.kind {
+                return !MacroStep.delayRange.contains(milliseconds)
+            }
+            return false
+        }) {
+            issues.append(.invalidDelay)
+        }
+        if macro.steps.contains(where: { step in
+            if case .keys(let combination) = step.kind { return !combination.isValid }
+            return false
+        }) {
+            issues.append(.invalidKeyCombination)
         }
         if macro.shortcut.usesRemovedFunctionKey {
             issues.append(.unsupportedFunction)
         }
-        guard macro.isEnabled else {
-            return issues
-        }
-        if let trailingKey = macro.trailingKey,
-           !thrownIssue({ try validateTrailing(trailingKey) }).isEmpty {
-            issues.append(.invalidTrailing)
-        }
-        if macro.text.isEmpty {
+        guard macro.isEnabled else { return issues }
+        if !macro.steps.contains(where: \.isEmitting) {
             issues.append(.emptyText)
         }
         if !macro.shortcut.usesRemovedFunctionKey {
             issues.append(contentsOf: thrownIssue { try validateShortcut(macro.shortcut) })
         }
-
         guard let identity = macro.shortcut.registrationIdentity else {
             issues.append(.duplicateShortcut)
             return issues
@@ -58,9 +65,7 @@ struct SettingsValidator {
         let sharing = settings.macros.filter {
             $0.isEnabled && $0.shortcut.registrationIdentity == identity
         }
-        if sharing.count > 1 {
-            issues.append(.duplicateShortcut)
-        }
+        if sharing.count > 1 { issues.append(.duplicateShortcut) }
         return issues
     }
 
