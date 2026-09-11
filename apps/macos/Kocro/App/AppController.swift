@@ -212,6 +212,10 @@ final class AppController: ObservableObject {
         }
     }
 
+    func runMacro(id: UUID) {
+        router.receive(id: id, receivedAt: .now)
+    }
+
     func start() {
         do {
             let value = try store.load()

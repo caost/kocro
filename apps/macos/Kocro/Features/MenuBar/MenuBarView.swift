@@ -2,13 +2,39 @@ import SwiftUI
 
 enum MenuItemKind: Hashable {
     case status
+    case macroList
     case recentExecution
     case settings
     case about
     case quit
 }
 
+struct MenuMacroItem: Equatable, Identifiable {
+    let id: UUID
+    let title: String
+    let shortcut: String
+
+    var displayName: String { "\(title) · \(shortcut)" }
+}
+
+struct MenuMacroGroup: Equatable, Identifiable {
+    let id: Int
+    let title: String
+    let items: [MenuMacroItem]
+}
+
+struct MenuMacroLayout: Equatable {
+    let items: [MenuMacroItem]
+    let groups: [MenuMacroGroup]
+
+    var emptyMessage: String? {
+        items.isEmpty && groups.isEmpty ? "실행 가능한 매크로 없음" : nil
+    }
+}
+
 struct MenuBarViewModel {
+    static let macroGroupSize = 10
+
     let statuses: [OverallStatus]
     let registrations: [RegistrationState]
 
@@ -22,15 +48,46 @@ struct MenuBarViewModel {
         registrations.filter { $0 == .registered }.count
     }
 
+    static func executableMacros(
+        macros: [MacroDefinition],
+        registration: [UUID: RegistrationState]
+    ) -> [MenuMacroItem] {
+        macros.filter {
+            $0.isEnabled && registration[$0.id] == .registered && !$0.text.isEmpty
+        }.map {
+            MenuMacroItem(
+                id: $0.id,
+                title: displayTitle(id: $0.id, title: $0.title),
+                shortcut: $0.shortcut.displayName
+            )
+        }
+    }
+
+    static func macroLayout(items: [MenuMacroItem]) -> MenuMacroLayout {
+        let flat = Array(items.prefix(macroGroupSize))
+        let groups = stride(from: macroGroupSize, to: items.count, by: macroGroupSize).map { start in
+            let end = min(start + macroGroupSize, items.count)
+            return MenuMacroGroup(
+                id: start,
+                title: "매크로 \(start + 1)–\(end)",
+                items: Array(items[start..<end])
+            )
+        }
+        return MenuMacroLayout(items: flat, groups: groups)
+    }
+
+    private static func displayTitle(id: UUID, title: String) -> String {
+        title.isEmpty ? "매크로 \(id.uuidString.prefix(8))" : title
+    }
+
     static func recentTitle(
         result: ExecutionResult,
         macros: [MacroDefinition]
     ) -> String {
-        guard let title = macros.first(where: { $0.id == result.id })?.title,
-              !title.isEmpty else {
-            return "매크로 \(result.id.uuidString.prefix(8))"
-        }
-        return title
+        displayTitle(
+            id: result.id,
+            title: macros.first(where: { $0.id == result.id })?.title ?? ""
+        )
     }
 
     static func resultText(for kind: ExecutionResultKind) -> String {
@@ -55,8 +112,8 @@ struct MenuBarViewModel {
 
     static func menuItems(hasRecentResult: Bool) -> [MenuItemKind] {
         hasRecentResult
-            ? [.status, .recentExecution, .settings, .about, .quit]
-            : [.status, .settings, .about, .quit]
+            ? [.status, .macroList, .recentExecution, .settings, .about, .quit]
+            : [.status, .macroList, .settings, .about, .quit]
     }
 }
 
@@ -104,6 +161,10 @@ struct MenuBarView: View {
                 )
             }
 
+        case .macroList:
+            Divider()
+            macroList
+
         case .recentExecution:
             if let result = app.lastResult {
                 Divider()
@@ -119,6 +180,39 @@ struct MenuBarView: View {
         case .quit:
             Divider()
             Button("Kocro 종료", action: actions.terminate)
+        }
+    }
+
+    @ViewBuilder
+    private var macroList: some View {
+        let layout = MenuBarViewModel.macroLayout(
+            items: MenuBarViewModel.executableMacros(
+                macros: app.runtimeMacros,
+                registration: app.registration
+            )
+        )
+        if let message = layout.emptyMessage {
+            Text(message).disabled(true)
+        }
+        ForEach(layout.items) { item in
+            macroButton(item)
+        }
+        ForEach(layout.groups) { group in
+            Menu {
+                ForEach(group.items) { item in
+                    macroButton(item)
+                }
+            } label: {
+                Text(verbatim: group.title)
+            }
+        }
+    }
+
+    private func macroButton(_ item: MenuMacroItem) -> some View {
+        Button {
+            app.runMacro(id: item.id)
+        } label: {
+            Text(verbatim: item.displayName)
         }
     }
 

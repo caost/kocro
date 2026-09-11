@@ -97,12 +97,118 @@ final class MenuBarViewModelTests: XCTestCase {
     func testNativeMenuDescriptorsHaveRequiredOrderAndOmitEmptyRecentRun() {
         XCTAssertEqual(
             MenuBarViewModel.menuItems(hasRecentResult: false),
-            [.status, .settings, .about, .quit]
+            [.status, .macroList, .settings, .about, .quit]
         )
         XCTAssertEqual(
             MenuBarViewModel.menuItems(hasRecentResult: true),
-            [.status, .recentExecution, .settings, .about, .quit]
+            [.status, .macroList, .recentExecution, .settings, .about, .quit]
         )
+    }
+
+    func testExecutableMacrosExcludeDisabledUnregisteredAndEmptyTextInRuntimeOrder() {
+        let first = Fixtures.macro(title: "첫 항목", text: "first secret")
+        var disabled = Fixtures.macro(text: "disabled secret")
+        disabled.isEnabled = false
+        let failed = Fixtures.macro(text: "failed secret")
+        let missing = Fixtures.macro(text: "missing secret")
+        let empty = Fixtures.macro(text: "")
+        let last = Fixtures.macro(title: "마지막 항목", text: " ")
+        let items = MenuBarViewModel.executableMacros(
+            macros: [first, disabled, failed, missing, empty, last],
+            registration: [
+                first.id: .registered,
+                disabled.id: .registered,
+                failed.id: .registrationFailed,
+                empty.id: .registered,
+                last.id: .registered,
+            ]
+        )
+
+        XCTAssertEqual(items.map(\.id), [first.id, last.id])
+        XCTAssertEqual(items.map(\.title), [first.title, last.title])
+        XCTAssertNil(MenuBarViewModel.macroLayout(items: items).emptyMessage)
+        let excluded = MenuBarViewModel.executableMacros(
+            macros: [disabled, failed, missing, empty],
+            registration: [disabled.id: .registered, empty.id: .registered]
+        )
+        XCTAssertTrue(excluded.isEmpty)
+        XCTAssertEqual(
+            MenuBarViewModel.macroLayout(items: excluded).emptyMessage,
+            "실행 가능한 매크로 없음"
+        )
+    }
+
+    func testMenuTitlesUseUUIDFallbackAndShortcutsUseDisplayName() throws {
+        let id = try XCTUnwrap(UUID(uuidString: "A1B2C3D4-1111-2222-3333-444444444444"))
+        let macros = [
+            Fixtures.macro(id: id, text: "private body one"),
+            Fixtures.macro(
+                title: "인사",
+                text: "private body two",
+                shortcut: .init(key: .letter("a"), modifiers: [.command, .shift])
+            ),
+            Fixtures.macro(
+                title: "이동",
+                text: "private body three",
+                shortcut: .init(key: .keyCode(48), modifiers: [.control, .option])
+            ),
+        ]
+        let items = MenuBarViewModel.executableMacros(
+            macros: macros,
+            registration: Dictionary(uniqueKeysWithValues: macros.map { ($0.id, RegistrationState.registered) })
+        )
+
+        XCTAssertEqual(items.map(\.title), ["매크로 A1B2C3D4", "인사", "이동"])
+        XCTAssertEqual(items.map(\.shortcut), macros.map { $0.shortcut.displayName })
+        for item in items {
+            XCTAssertEqual(item.displayName, "\(item.title) · \(item.shortcut)")
+            for macro in macros {
+                XCTAssertFalse(item.title.contains(macro.text))
+                XCTAssertFalse(item.shortcut.contains(macro.text))
+                XCTAssertFalse(item.displayName.contains(macro.text))
+            }
+        }
+    }
+
+    func testMacroLayoutKeepsFlatListThroughThreshold() {
+        XCTAssertEqual(MenuBarViewModel.macroGroupSize, 10)
+        for count in [0, 1, 9, 10] {
+            let items = makeMenuItems(count: count)
+            let layout = MenuBarViewModel.macroLayout(items: items)
+
+            XCTAssertEqual(layout.items, items, "count: \(count)")
+            XCTAssertTrue(layout.groups.isEmpty, "count: \(count)")
+            XCTAssertEqual(layout.emptyMessage, count == 0 ? "실행 가능한 매크로 없음" : nil)
+        }
+    }
+
+    func testMacroLayoutGroupsOverflowWithExactRangesAndNoMissingOrDuplicateItems() {
+        let cases: [(count: Int, sizes: [Int], labels: [String])] = [
+            (11, [1], ["매크로 11–11"]),
+            (20, [10], ["매크로 11–20"]),
+            (21, [10, 1], ["매크로 11–20", "매크로 21–21"]),
+            (35, [10, 10, 5], ["매크로 11–20", "매크로 21–30", "매크로 31–35"]),
+        ]
+        for example in cases {
+            let items = makeMenuItems(count: example.count)
+            let layout = MenuBarViewModel.macroLayout(items: items)
+            let flattened = layout.items + layout.groups.flatMap(\.items)
+
+            XCTAssertEqual(layout.items, Array(items.prefix(10)))
+            XCTAssertEqual(layout.groups.count, example.sizes.count)
+            XCTAssertEqual(layout.groups.map { $0.items.count }, example.sizes)
+            XCTAssertEqual(layout.groups.map(\.title), example.labels)
+            XCTAssertEqual(Set(layout.groups.map(\.id)).count, layout.groups.count)
+            XCTAssertEqual(flattened, items)
+            XCTAssertEqual(Set(flattened.map(\.id)).count, example.count)
+            XCTAssertNil(layout.emptyMessage)
+        }
+    }
+
+    private func makeMenuItems(count: Int) -> [MenuMacroItem] {
+        (0..<count).map {
+            MenuMacroItem(id: UUID(), title: "항목 \($0 + 1)", shortcut: "F13")
+        }
     }
 
     func testRecentExecutionDetailUsesShortcutAndConcreteResult() {
