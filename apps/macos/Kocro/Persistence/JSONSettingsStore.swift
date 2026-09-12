@@ -3,11 +3,11 @@ import Foundation
 
 final class JSONSettingsStore: SettingsStoring {
     private let file: SettingsFile
-    private let validator: SettingsValidator
+    private let codec: SettingsJSONCodec
 
     init(file: SettingsFile, validator: SettingsValidator) {
         self.file = file
-        self.validator = validator
+        codec = SettingsJSONCodec(validator: validator)
     }
 
     func load() throws -> AppSettings {
@@ -18,75 +18,14 @@ final class JSONSettingsStore: SettingsStoring {
         }
 
         do {
-            let persisted = try JSONDecoder().decode(PersistedAppSettings.self, from: file.read())
-            var decoded = AppSettings(
-                macros: persisted.macros.enumerated().map { index, macro in
-                    macro.definition(defaultTitle: "매크로 \(index + 1)")
-                }
-            )
-            for index in decoded.macros.indices
-            where decoded.macros[index].shortcut.usesRemovedFunctionKey {
-                decoded.macros[index].isEnabled = false
-                decoded.macros[index].shortcut = .init(key: .empty, modifiers: [])
-            }
-            for index in decoded.macros.indices
-            where ReservedShortcutPolicy.contains(decoded.macros[index].shortcut) {
-                decoded.macros[index].isEnabled = false
-            }
-            return try validator.validate(decoded)
+            return try codec.decode(file.read())
         } catch {
             throw StoreError.invalidFile
         }
     }
 
     func save(_ value: AppSettings) throws {
-        let valid = try validator.validate(value)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try file.atomicReplace(with: encoder.encode(valid), permissions: 0o600)
-    }
-}
-
-private struct PersistedAppSettings: Decodable {
-    let macros: [PersistedMacroDefinition]
-}
-
-private struct PersistedMacroDefinition: Decodable {
-    let id: UUID
-    let title: String?
-    let isEnabled: Bool
-    let shortcut: ShortcutDefinition
-    let steps: [MacroStep]
-
-    private enum CodingKeys: String, CodingKey {
-        case id, title, isEnabled, shortcut, steps, text, trailingKey
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(UUID.self, forKey: .id)
-        title = container.contains(.title)
-            ? try container.decode(String.self, forKey: .title)
-            : nil
-        isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
-        shortcut = try container.decode(ShortcutDefinition.self, forKey: .shortcut)
-        if container.contains(.steps) {
-            steps = try container.decode([MacroStep].self, forKey: .steps)
-        } else {
-            let text = try container.decode(String.self, forKey: .text)
-            let trailing = try container.decodeIfPresent(TrailingKey.self, forKey: .trailingKey)
-            steps = MacroStep.legacySteps(text: text, trailingKey: trailing)
-        }
-    }
-
-    func definition(defaultTitle: String) -> MacroDefinition {
-        MacroDefinition(
-            id: id,
-            title: title ?? defaultTitle,
-            isEnabled: isEnabled,
-            shortcut: shortcut,
-            steps: steps
-        )
+        try file.atomicReplace(with: codec.encode(value), permissions: 0o600)
     }
 }
 

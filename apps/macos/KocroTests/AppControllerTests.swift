@@ -28,15 +28,17 @@ final class AppControllerTests: XCTestCase {
         XCTAssertEqual(app.overallStatus, .settingsError)
         XCTAssertTrue(app.runtime.macros.isEmpty)
         XCTAssertTrue(app.draft.macros.isEmpty)
+        XCTAssertTrue(app.savedSettings.macros.isEmpty)
         XCTAssertTrue(app.registration.isEmpty)
         XCTAssertEqual(shortcuts.replaceCalls, [[]])
         XCTAssertFalse(app.showsReplaceWarning)
         app.prepareSettingsDraft()
         XCTAssertEqual(app.draft.macros.count, 8)
+        XCTAssertTrue(app.savedSettings.macros.isEmpty)
         XCTAssertTrue(app.showsReplaceWarning)
     }
 
-    func testSuccessfulLoadInstallsOnlyRegisteredMacrosAsExecutionSnapshots() {
+    func testSuccessfulLoadInstallsOnlyRegisteredMacrosAsExecutionSnapshots() throws {
         let registered = Fixtures.macro(text: "registered")
         let failed = Fixtures.macro(text: "must not run", shortcut: .init(key: .function(14), modifiers: []))
         let settings = AppSettings(macros: [registered, failed])
@@ -48,12 +50,14 @@ final class AppControllerTests: XCTestCase {
         shortcuts.trigger(failed.id)
         XCTAssertEqual(app.runtime, settings)
         XCTAssertEqual(app.draft, settings)
+        XCTAssertEqual(app.savedSettings, settings)
+        XCTAssertEqual(try exportedSettings(from: app), settings)
         XCTAssertEqual(queue.requests.map(\.steps), [registered.steps])
         XCTAssertEqual(queue.rejections.map(\.kind), [.missingDefinition])
         XCTAssertEqual(app.overallStatus, .ready)
     }
 
-    func testFailedSaveKeepsOldRuntimeRegistrationAndTriggerContent() {
+    func testFailedSaveKeepsOldRuntimeRegistrationAndTriggerContent() throws {
         let old = Fixtures.settings(text: "old")
         let store = StoreSpy(loadResult: .success(old))
         let shortcuts = ShortcutSpy()
@@ -66,6 +70,9 @@ final class AppControllerTests: XCTestCase {
         app.save()
         shortcuts.trigger(old.macros[0].id)
         XCTAssertEqual(app.runtime, old)
+        XCTAssertEqual(app.savedSettings, old)
+        XCTAssertEqual(try exportedSettings(from: app), old)
+        XCTAssertTrue(store.savedValues.isEmpty)
         XCTAssertEqual(shortcuts.prepareCalls, [old, new])
         XCTAssertEqual(shortcuts.commitCount, 1)
         XCTAssertEqual(shortcuts.cancelCount, 1)
@@ -73,7 +80,7 @@ final class AppControllerTests: XCTestCase {
         XCTAssertNotNil(app.saveError)
     }
 
-    func testSuccessfulSavePersistsBeforeReplacingRuntimeAndRegistration() {
+    func testSuccessfulSavePersistsBeforeReplacingRuntimeAndRegistration() throws {
         let old = Fixtures.settings(text: "old")
         let new = AppSettings(macros: [old.macros[0].withText("new")])
         let store = StoreSpy(loadResult: .success(old))
@@ -83,18 +90,21 @@ final class AppControllerTests: XCTestCase {
         app.draft = new
         store.onSave = {
             XCTAssertEqual(app.runtime, old)
+            XCTAssertEqual(app.savedSettings, old)
             XCTAssertEqual(shortcuts.prepareCalls, [old, new])
             XCTAssertEqual(shortcuts.commitCount, 1)
         }
         app.save()
         XCTAssertEqual(store.savedValues, [new])
         XCTAssertEqual(app.runtime, new)
+        XCTAssertEqual(app.savedSettings, new)
+        XCTAssertEqual(try exportedSettings(from: app), new)
         XCTAssertEqual(shortcuts.prepareCalls, [old, new])
         XCTAssertEqual(shortcuts.commitCount, 2)
         XCTAssertNil(app.saveError)
     }
 
-    func testCarbonCollisionPersistsDisabledCandidateBeforeCommittingOwnership() {
+    func testCarbonCollisionPersistsDisabledCandidateBeforeCommittingOwnership() throws {
         let old = Fixtures.settings(text: "old")
         let successful = Fixtures.carbon(13)
         let conflicted = Fixtures.carbon(14)
@@ -111,12 +121,15 @@ final class AppControllerTests: XCTestCase {
         shortcuts.nextCandidateSettings = normalized
         store.onSave = {
             XCTAssertEqual(app.runtime, old)
+            XCTAssertEqual(app.savedSettings, old)
             shortcuts.trigger(old.macros[0].id)
             XCTAssertEqual(queue.requests.map(\.steps), [old.macros[0].steps])
             XCTAssertEqual(shortcuts.commitCount, 1)
         }
         app.save()
         XCTAssertEqual(store.savedValues, [normalized])
+        XCTAssertEqual(app.savedSettings, normalized)
+        XCTAssertEqual(try exportedSettings(from: app), normalized)
         XCTAssertEqual(app.runtime, normalized)
         XCTAssertEqual(app.draft, normalized)
         XCTAssertEqual(app.registration[successful.id], .registered)
@@ -263,7 +276,7 @@ final class AppControllerTests: XCTestCase {
         XCTAssertNotNil(app.saveError)
     }
 
-    func testSupersededCandidateAfterPersistenceDoesNotPublishRuntimeOrDraft() {
+    func testSupersededCandidateAfterPersistenceDoesNotPublishRuntimeOrDraft() throws {
         let old = AppSettings(macros: [])
         let edited = AppSettings(macros: [Fixtures.carbon(13)])
         let store = StoreSpy(loadResult: .success(old))
@@ -278,9 +291,56 @@ final class AppControllerTests: XCTestCase {
         }
         app.save()
         XCTAssertEqual(store.savedValues, [edited])
+        XCTAssertEqual(app.savedSettings, edited)
+        XCTAssertEqual(try exportedSettings(from: app), edited)
         XCTAssertEqual(app.runtime, old)
         XCTAssertEqual(app.draft, edited)
         XCTAssertNotNil(app.saveError)
+    }
+
+    func testLoadCommitFailureKeepsLoadedSettingsForExport() throws {
+        let loaded = Fixtures.settings(text: "loaded")
+        let store = StoreSpy(loadResult: .success(loaded))
+        let app = AppController(
+            store: store,
+            shortcuts: RejectingCommitCoordinator(),
+            permissions: PermissionSpy(),
+            queue: QueueSpy()
+        )
+
+        app.start()
+
+        XCTAssertNotNil(app.loadError)
+        XCTAssertTrue(app.runtime.macros.isEmpty)
+        XCTAssertTrue(app.draft.macros.isEmpty)
+        XCTAssertTrue(app.registration.isEmpty)
+        XCTAssertEqual(app.savedSettings, loaded)
+        XCTAssertEqual(try exportedSettings(from: app), loaded)
+        XCTAssertTrue(store.savedValues.isEmpty)
+
+        app.prepareSettingsDraft()
+
+        XCTAssertTrue(app.showsReplaceWarning)
+        XCTAssertEqual(app.savedSettings, loaded)
+        XCTAssertEqual(try exportedSettings(from: app), loaded)
+        XCTAssertTrue(store.savedValues.isEmpty)
+    }
+
+    func testValidationFailurePreservesSavedSettingsAndExport() throws {
+        let loaded = Fixtures.settings(text: "loaded")
+        let store = StoreSpy(loadResult: .success(loaded))
+        let shortcuts = ShortcutSpy()
+        let app = makeApp(store: store, shortcuts: shortcuts)
+        app.start()
+        app.draft.macros[0] = app.draft.macros[0].withText("")
+
+        app.save()
+
+        XCTAssertNotNil(app.saveError)
+        XCTAssertEqual(app.savedSettings, loaded)
+        XCTAssertEqual(try exportedSettings(from: app), loaded)
+        XCTAssertTrue(store.savedValues.isEmpty)
+        XCTAssertEqual(shortcuts.prepareCalls, [loaded])
     }
 
     func testTriggerCopiesCompleteSequenceBeforeLaterSettingsReplacement() {
@@ -403,6 +463,12 @@ final class AppControllerTests: XCTestCase {
         XCTAssertEqual(app.measurementCount, 37)
     }
 
+    private func exportedSettings(from app: AppController) throws -> AppSettings {
+        let model = SettingsViewModel(settings: app.draft, validator: .init())
+        let document = try model.prepareExport(from: app.savedSettings)
+        return try JSONDecoder().decode(AppSettings.self, from: document.data)
+    }
+
     private func makeApp(
         store: StoreSpy = StoreSpy(loadResult: .success(.init(macros: []))),
         shortcuts: ShortcutSpy = ShortcutSpy(),
@@ -411,6 +477,29 @@ final class AppControllerTests: XCTestCase {
     ) -> AppController {
         AppController(store: store, shortcuts: shortcuts, permissions: permissions, queue: queue)
     }
+}
+
+private final class RejectingCommitCoordinator: ShortcutCoordinating {
+    var onTrigger: ((UUID, ContinuousClock.Instant) -> Void)?
+
+    @MainActor
+    func prepareReplacement(with settings: AppSettings) -> any ShortcutReplacementCandidate {
+        ShortcutSpy().prepareReplacement(with: settings)
+    }
+
+    @MainActor
+    func commit(
+        _ candidate: any ShortcutReplacementCandidate,
+        installSnapshots: ([UUID: RegistrationState]) -> Void
+    ) -> [UUID: RegistrationState]? {
+        nil
+    }
+
+    @MainActor
+    func cancel(_ candidate: any ShortcutReplacementCandidate) {}
+
+    @MainActor
+    func shutdown() {}
 }
 
 private final class ActivationApplicationSpy: ApplicationActivating {
