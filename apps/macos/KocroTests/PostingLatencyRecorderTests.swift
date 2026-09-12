@@ -121,8 +121,14 @@ final class PostingLatencyRecorderTests: XCTestCase {
         let api = EventAPISpy()
         let measurement = ThrowingMeasurementRecorder()
         var loggedErrorTypes: [String] = []
+        var waits: [Int] = []
+        let expected: [Kocro.EventKind] = [
+            .unicode("abcd"), .unicode("ef"),
+            .keyDown(36, []), .keyUp(36, [])
+        ]
         measurement.onRecord = {
-            XCTAssertEqual(api.posted, api.created)
+            XCTAssertEqual(api.posted, expected)
+            XCTAssertEqual(waits, [500])
         }
         let poster = EventBatchPoster(
             api: api,
@@ -130,18 +136,28 @@ final class PostingLatencyRecorderTests: XCTestCase {
             measurement: measurement,
             measurementFailure: { error in
                 loggedErrorTypes.append(String(reflecting: type(of: error)))
+            },
+            sleep: { milliseconds in
+                XCTAssertEqual(api.posted, [.unicode("abcd"), .unicode("ef")])
+                XCTAssertEqual(api.created, expected)
+                waits.append(milliseconds)
             }
         )
         let request = ExecutionRequest(
             id: UUID(),
             shortcut: "F13",
-            text: "abcdef",
-            trailing: .enter,
+            steps: [
+                .init(kind: .text("abcdef")),
+                .init(kind: .delay(milliseconds: 500)),
+                .init(kind: .keys(.init(keyCode: 36, modifiers: []))),
+                .init(kind: .delay(milliseconds: 60_000))
+            ],
             receivedAt: .now
         )
 
         XCTAssertNoThrow(try poster.buildAndPost(request))
-        XCTAssertEqual(api.posted, api.created)
+        XCTAssertEqual(api.posted, expected)
+        XCTAssertEqual(waits, [500])
         XCTAssertEqual(loggedErrorTypes, [String(reflecting: MeasurementTestError.self)])
     }
 }

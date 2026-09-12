@@ -16,15 +16,13 @@ final class MacroExecutionQueueTests: XCTestCase {
             let shouldEnqueue = !didEnqueueSecond
             didEnqueueSecond = true
             callbackLock.unlock()
-            if shouldEnqueue {
-                queue.enqueue(second)
-            }
+            if shouldEnqueue { queue.enqueue(second) }
         }
 
         queue.enqueue(first)
         await queue.drain()
 
-        XCTAssertEqual(poster.texts, ["first", "second"])
+        XCTAssertEqual(poster.requests.map(\.steps), [first.steps, second.steps])
     }
 
     func testResultCallbackEnqueueDoesNotEmitStaleIdleTransition() async {
@@ -36,13 +34,9 @@ final class MacroExecutionQueueTests: XCTestCase {
         bothResults.expectedFulfillmentCount = 2
         let transitions = BooleanRecorder()
 
-        queue.onIdleChange = { isIdle in
-            transitions.append(isIdle)
-        }
+        queue.onIdleChange = { transitions.append($0) }
         queue.onResult = { result in
-            if result.id == first.id {
-                queue.enqueue(second)
-            }
+            if result.id == first.id { queue.enqueue(second) }
             bothResults.fulfill()
         }
 
@@ -50,30 +44,21 @@ final class MacroExecutionQueueTests: XCTestCase {
         await fulfillment(of: [bothResults], timeout: 2)
         await queue.drain()
 
-        let observedTransitions = transitions.values
-        XCTAssertEqual(observedTransitions, [false, true])
-        XCTAssertEqual(observedTransitions.last, true)
+        XCTAssertEqual(transitions.values, [false, true])
         XCTAssertTrue(queue.isIdle)
-        XCTAssertEqual(poster.texts, ["first", "second"])
+        XCTAssertEqual(poster.requests.map(\.steps), [first.steps, second.steps])
     }
 
     func testFIFOAndMaximumConcurrencyOneWhileFirstRequestIsBlocked() async {
         let poster = BlockingPoster()
         let queue = MacroExecutionQueue(poster: poster, accessibility: { true })
         let first = ExecutionRequest(
-            id: UUID(),
-            shortcut: "F13",
-            text: "first",
-            trailing: .space,
+            id: UUID(), shortcut: "F13",
+            steps: [.init(kind: .text("first")),
+                    .init(kind: .keys(.init(keyCode: 49, modifiers: [])))],
             receivedAt: .now
         )
-        let second = ExecutionRequest(
-            id: UUID(),
-            shortcut: "F14",
-            text: "second",
-            trailing: nil,
-            receivedAt: .now
-        )
+        let second = request(text: "second")
 
         queue.enqueue(first)
         XCTAssertTrue(poster.waitUntilFirstRequestEnters())
@@ -86,37 +71,36 @@ final class MacroExecutionQueueTests: XCTestCase {
         XCTAssertEqual(poster.maximumConcurrent, 1)
     }
 
-    func testRequestKeepsTriggerTimeValueSnapshot() async {
+    func testRequestKeepsTriggerTimeSequenceSnapshot() async {
         let poster = RecordingBatchPoster()
         let queue = MacroExecutionQueue(poster: poster, accessibility: { true })
-        var sourceText = "before"
-        var sourceTrailing: TrailingKey? = .enter
-        let request = ExecutionRequest(
-            id: UUID(),
-            shortcut: "F13",
-            text: sourceText,
-            trailing: sourceTrailing,
-            receivedAt: .now
+        var source: [MacroStep] = [
+            .init(kind: .text("before")),
+            .init(kind: .keys(.init(keyCode: 8, modifiers: .command))),
+            .init(kind: .delay(milliseconds: 500)),
+            .init(kind: .keys(.init(keyCode: 9, modifiers: .command))),
+        ]
+        let expected = source
+        let snapshot = ExecutionRequest(
+            id: UUID(), shortcut: "F13", steps: source, receivedAt: .now
         )
 
-        sourceText = "after"
-        sourceTrailing = .tab
-        queue.enqueue(request)
+        source[0].kind = .text("after")
+        source[2].kind = .delay(milliseconds: 100)
+        source.reverse()
+        queue.enqueue(snapshot)
         await queue.drain()
 
-        XCTAssertEqual(poster.requests.map(\.text), ["before"])
-        XCTAssertEqual(poster.requests.map(\.trailing), [.enter])
+        XCTAssertNotEqual(source, expected)
+        XCTAssertEqual(poster.requests.map(\.steps), [expected])
     }
 
     func testNoAccessibilityPostsNothingAndResultContainsNoMacroText() async {
         let poster = RecordingBatchPoster()
         let queue = MacroExecutionQueue(poster: poster, accessibility: { false })
         let request = ExecutionRequest(
-            id: UUID(),
-            shortcut: "⌘F13",
-            text: "secret macro text",
-            trailing: nil,
-            receivedAt: .now
+            id: UUID(), shortcut: "⌘F13",
+            steps: [.init(kind: .text("secret macro text"))], receivedAt: .now
         )
 
         queue.enqueue(request)
@@ -130,13 +114,7 @@ final class MacroExecutionQueueTests: XCTestCase {
     func testBuildFailureIsReportedWithoutLeakingMacroText() async {
         let poster = RecordingBatchPoster(error: EventBuildError.creationFailed)
         let queue = MacroExecutionQueue(poster: poster, accessibility: { true })
-        let request = ExecutionRequest(
-            id: UUID(),
-            shortcut: "F13",
-            text: "private value",
-            trailing: nil,
-            receivedAt: .now
-        )
+        let request = request(text: "private value")
 
         queue.enqueue(request)
         await queue.drain()
@@ -147,11 +125,8 @@ final class MacroExecutionQueueTests: XCTestCase {
 
     private func request(text: String) -> ExecutionRequest {
         ExecutionRequest(
-            id: UUID(),
-            shortcut: "F13",
-            text: text,
-            trailing: nil,
-            receivedAt: .now
+            id: UUID(), shortcut: "F13",
+            steps: [.init(kind: .text(text))], receivedAt: .now
         )
     }
 }

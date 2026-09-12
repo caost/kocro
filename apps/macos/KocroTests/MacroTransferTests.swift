@@ -18,9 +18,14 @@ final class MacroTransferTests: XCTestCase {
         let model = SettingsViewModel(settings: saved, validator: .init())
         let id = saved.macros[0].id
         let deleted = saved.macros[1]
-        model.settings.macros[0].text = "저장 전 편집"
+        let deletedKeyStep = try XCTUnwrap(deleted.steps.first { step in
+            if case .keys = step.kind { return true }
+            return false
+        })
+        let deletedKeyField = TokenField.step(macroID: deleted.id, stepID: deletedKeyStep.id)
+        model.settings.macros[0] = model.settings.macros[0].withText("저장 전 편집")
         model.updateTokenText("{KC_NOPE}", for: .shortcut(id))
-        model.updateTokenText("{KC_BAD}", for: .trailing(deleted.id))
+        model.updateTokenText("{KC_BAD}", for: deletedKeyField)
         model.delete(id: deleted.id)
         let before = model.settings
         let history = model.deletedMacros
@@ -36,7 +41,7 @@ final class MacroTransferTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(AppSettings.self, from: document.data), saved)
         XCTAssertEqual(model.settings, before)
         XCTAssertEqual(model.tokenDraft(for: .shortcut(id)).text, tokenText)
-        XCTAssertEqual(model.tokenDraft(for: .trailing(deleted.id)).text, "{KC_BAD}")
+        XCTAssertEqual(model.tokenDraft(for: deletedKeyField).text, "{KC_BAD}")
         XCTAssertEqual(model.deletedMacros, history)
         XCTAssertTrue(model.canUndoDelete)
         XCTAssertTrue(model.isDirty)
@@ -48,18 +53,24 @@ final class MacroTransferTests: XCTestCase {
 
         XCTAssertEqual(model.settings.macros[1], deleted)
         XCTAssertEqual(model.settings.macros[0], before.macros[0])
-        XCTAssertEqual(model.tokenDraft(for: .trailing(deleted.id)).text, "{KC_BAD}")
+        XCTAssertEqual(model.tokenDraft(for: deletedKeyField).text, "{KC_BAD}")
         XCTAssertFalse(model.canUndoDelete)
         XCTAssertEqual(saves, 0)
     }
 
     func testRepeatedImportAppendsDisabledCopiesAndPreservesEditorState() throws {
         let first = Fixtures.carbon(13)
-        let deleted = Fixtures.carbon(14)
+        var deleted = Fixtures.carbon(14)
+        deleted.steps.append(.init(kind: .keys(.init(keyCode: 36, modifiers: []))))
         let original = AppSettings(macros: [first, deleted])
         let model = SettingsViewModel(settings: original, validator: .init())
+        let deletedKeyStep = try XCTUnwrap(deleted.steps.first { step in
+            if case .keys = step.kind { return true }
+            return false
+        })
+        let deletedKeyField = TokenField.step(macroID: deleted.id, stepID: deletedKeyStep.id)
         model.updateTokenText("{KC_NOPE}", for: .shortcut(first.id))
-        model.updateTokenText("{KC_BAD}", for: .trailing(deleted.id))
+        model.updateTokenText("{KC_BAD}", for: deletedKeyField)
         model.settings.macros[0].title = "편집한 제목"
         model.delete(id: deleted.id)
         model.registration = [first.id: .registrationFailed]
@@ -76,7 +87,7 @@ final class MacroTransferTests: XCTestCase {
 
         XCTAssertEqual(Array(model.settings.macros.prefix(1)), before.macros)
         let additions = Array(model.settings.macros.dropFirst())
-        XCTAssertEqual(additions.map(\.text), [first.text, deleted.text, first.text, deleted.text])
+        XCTAssertEqual(additions.map(\.steps), [first.steps, deleted.steps, first.steps, deleted.steps])
         XCTAssertEqual(additions.map(\.shortcut), [first.shortcut, deleted.shortcut, first.shortcut, deleted.shortcut])
         XCTAssertTrue(additions.allSatisfy { !$0.isEnabled })
         XCTAssertEqual(Set(additions.map(\.id)).count, 4)
@@ -84,8 +95,12 @@ final class MacroTransferTests: XCTestCase {
         for macro in additions {
             XCTAssertEqual(model.tokenDraft(for: .shortcut(macro.id)).text,
                 TokenEditorDraft(value: .shortcut(macro.shortcut), mode: .shortcut).text)
-            XCTAssertEqual(model.tokenDraft(for: .trailing(macro.id)).text,
-                TokenEditorDraft(value: .trailing(macro.trailingKey), mode: .trailing).text)
+            for step in macro.steps {
+                guard case .keys(let combination) = step.kind else { continue }
+                let field = TokenField.step(macroID: macro.id, stepID: step.id)
+                XCTAssertEqual(model.tokenDraft(for: field).text,
+                    TokenEditorDraft(value: .trailing(combination.trailingKey), mode: .trailing).text)
+            }
         }
         XCTAssertEqual(model.tokenDraft(for: .shortcut(first.id)).text, "{KC_NOPE}")
         XCTAssertEqual(model.deletedMacros, history)
@@ -96,7 +111,7 @@ final class MacroTransferTests: XCTestCase {
         XCTAssertEqual(saves, 0)
         model.undoDelete()
         XCTAssertEqual(model.settings.macros[1], deleted)
-        XCTAssertEqual(model.tokenDraft(for: .trailing(deleted.id)).text, "{KC_BAD}")
+        XCTAssertEqual(model.tokenDraft(for: deletedKeyField).text, "{KC_BAD}")
     }
 
     func testEmptyImportLeavesCleanModelUnchanged() throws {
@@ -114,15 +129,15 @@ final class MacroTransferTests: XCTestCase {
     func testInvalidFilesAreRejectedBeforeAnyEditorMutation() throws {
         let valid = Fixtures.carbon(13)
         var tooLong = Fixtures.carbon(14)
-        tooLong.text = String(repeating: "👨🏽‍💻", count: 10_001)
+        tooLong = tooLong.withText(String(repeating: "👨🏽‍💻", count: 10_001))
         var emptyActive = Fixtures.carbon(14)
-        emptyActive.text = ""
-        var badTrailing = Fixtures.carbon(14)
-        badTrailing.trailingKey = .custom(keyCode: nil, modifiers: [])
+        emptyActive.steps = []
+        var badKeyCombination = Fixtures.carbon(14)
+        badKeyCombination.steps.append(.init(kind: .keys(.init(keyCode: .max, modifiers: []))))
         let duplicateShortcut = Fixtures.carbon(13)
         var inputs = [Data("{".utf8), Data("[]".utf8)]
         for macros in [[valid, valid], [valid, tooLong], [valid, emptyActive],
-                       [valid, badTrailing], [valid, duplicateShortcut]] {
+                       [valid, badKeyCombination], [valid, duplicateShortcut]] {
             inputs.append(try JSONEncoder().encode(AppSettings(macros: macros)))
         }
         for title: Any in [NSNull(), 1, ["value": "잘못된 제목"]] {
@@ -169,7 +184,7 @@ final class MacroTransferTests: XCTestCase {
 
         XCTAssertEqual(try model.importMacros(from: data), 5)
         XCTAssertEqual(model.settings.macros.map(\.title), migrated.macros.map(\.title))
-        XCTAssertEqual(model.settings.macros.map(\.text), legacy.map(\.text))
+        XCTAssertEqual(model.settings.macros.map(\.steps), migrated.macros.map(\.steps))
         XCTAssertEqual(model.settings.macros.map(\.shortcut), migrated.macros.map(\.shortcut))
         XCTAssertTrue(model.settings.macros.allSatisfy { !$0.isEnabled })
         XCTAssertTrue(model.settings.macros.prefix(4).allSatisfy { $0.shortcut.key == .empty })

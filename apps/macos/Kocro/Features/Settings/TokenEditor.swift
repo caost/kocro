@@ -73,7 +73,7 @@ struct TokenEditor: View {
                     onAcceptCompletion: acceptCompletion
                 )
                 .frame(minWidth: 220, minHeight: 26)
-                .focused(focusedField, equals: focusValue)
+                .focused(focusedField, equals: field.focus)
 
                 KeyRecorder(
                     shortcut: recordedShortcut,
@@ -148,14 +148,7 @@ struct TokenEditor: View {
     private var mode: KeyInputMode {
         switch field {
         case .shortcut: return .shortcut
-        case .trailing: return .trailing
-        }
-    }
-
-    private var focusValue: MacroFieldFocus {
-        switch field {
-        case .shortcut(let id): return .shortcut(id)
-        case .trailing(let id): return .trailing(id)
+        case .step: return .trailing
         }
     }
 
@@ -166,7 +159,10 @@ struct TokenEditor: View {
                 case .shortcut(let shortcut):
                     return shortcut
                 case .trailing(let trailingKey):
-                    return ShortcutDefinition(trailingKey: trailingKey)
+                    guard let combination = KeyCombination(trailingKey: trailingKey) else {
+                        return .init(key: .empty, modifiers: [])
+                    }
+                    return ShortcutDefinition(trailingKey: combination.trailingKey)
                 }
             },
             set: { shortcut in

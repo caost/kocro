@@ -9,7 +9,6 @@ enum EventKind: Equatable, Sendable {
 
 protocol EventAPI: AnyObject {
     associatedtype Event
-
     func create(_ kind: EventKind) -> Event?
     func post(_ event: Event)
 }
@@ -17,9 +16,15 @@ protocol EventAPI: AnyObject {
 enum EventBuildError: Error, Equatable {
     case creationFailed
     case invalidTrailingKey
+    case invalidDelay
 }
 
 struct EventBatchFactory<API: EventAPI> {
+    struct EventSegment {
+        let events: [API.Event]
+        let delayAfterMilliseconds: Int
+    }
+
     let api: API
     let maximumUTF16Units: Int
 
@@ -32,7 +37,6 @@ struct EventBatchFactory<API: EventAPI> {
     func chunks(_ text: String) -> [String] {
         var output: [String] = []
         var current = ""
-
         for character in text {
             let characterText = String(character)
             if !current.isEmpty,
@@ -43,54 +47,70 @@ struct EventBatchFactory<API: EventAPI> {
                 current.append(character)
             }
         }
-
-        if !current.isEmpty {
-            output.append(current)
-        }
+        if !current.isEmpty { output.append(current) }
         return output
     }
 
     func make(text: String, trailing: TrailingKey?) throws -> [API.Event] {
-        let trailingKinds = try trailing.map(eventKinds(for:)) ?? []
-        let kinds = chunks(text).map(EventKind.unicode) + trailingKinds
-        var events: [API.Event] = []
-        events.reserveCapacity(kinds.count)
-
-        for kind in kinds {
-            guard let event = api.create(kind) else {
-                throw EventBuildError.creationFailed
-            }
-            events.append(event)
-        }
-        return events
+        try makeSegments(steps: MacroStep.legacySteps(text: text, trailingKey: trailing))
+            .flatMap(\.events)
     }
 
-    private func eventKinds(for trailing: TrailingKey) throws -> [EventKind] {
-        let keyCode: UInt16
-        let modifiers: ModifierSet
-
-        switch trailing {
-        case .enter:
-            keyCode = 36
-            modifiers = []
-        case .space:
-            keyCode = 49
-            modifiers = []
-        case .tab:
-            keyCode = 48
-            modifiers = []
-        case .custom(let value?, let flags):
-            guard MacKeyCodePolicy.isAllowedTrailingKeyCode(value),
-                  flags.isSubset(of: .supported) else {
-                throw EventBuildError.invalidTrailingKey
+    func makeSegments(steps: [MacroStep]) throws -> [EventSegment] {
+        // Validate the complete sequence before allocating any events.
+        for step in steps {
+            switch step.kind {
+            case .keys(let combination):
+                guard combination.isValid else { throw EventBuildError.invalidTrailingKey }
+            case .delay(let milliseconds):
+                guard MacroStep.delayRange.contains(milliseconds) else {
+                    throw EventBuildError.invalidDelay
+                }
+            case .text: break
             }
-            keyCode = value
-            modifiers = flags
-        case .custom(nil, _), .customFunction:
-            throw EventBuildError.invalidTrailingKey
         }
 
-        return [.keyDown(keyCode, modifiers), .keyUp(keyCode, modifiers)]
+        var segments: [EventSegment] = []
+        var pendingDelay = 0
+        for step in steps {
+            let kinds: [EventKind]
+            switch step.kind {
+            case .text(let text):
+                kinds = chunks(text).map(EventKind.unicode)
+            case .keys(let combination):
+                kinds = [
+                    .keyDown(combination.keyCode, combination.modifiers),
+                    .keyUp(combination.keyCode, combination.modifiers),
+                ]
+            case .delay(let milliseconds):
+                // Leading delays have no preceding execution step.
+                if !segments.isEmpty {
+                    let sum = pendingDelay.addingReportingOverflow(milliseconds)
+                    guard !sum.overflow else { throw EventBuildError.invalidDelay }
+                    pendingDelay = sum.partialValue
+                }
+                continue
+            }
+            guard !kinds.isEmpty else { continue }
+            var events: [API.Event] = []
+            events.reserveCapacity(kinds.count)
+            for kind in kinds {
+                guard let event = api.create(kind) else {
+                    throw EventBuildError.creationFailed
+                }
+                events.append(event)
+            }
+            if let previous = segments.last {
+                segments[segments.count - 1] = EventSegment(
+                    events: previous.events,
+                    delayAfterMilliseconds: pendingDelay
+                )
+            }
+            pendingDelay = 0
+            segments.append(EventSegment(events: events, delayAfterMilliseconds: 0))
+        }
+        // A pending delay is used only when another emitting segment follows.
+        return segments
     }
 }
 
@@ -103,22 +123,32 @@ final class EventBatchPoster<API: EventAPI>: BatchPosting {
     private let factory: EventBatchFactory<API>
     private let measurement: PostingMeasurementRecording?
     private let measurementFailure: (Error) -> Void
+    private let sleep: (Int) -> Void
 
     init(
         api: API,
         maximumUTF16Units: Int,
         measurement: PostingMeasurementRecording? = nil,
-        measurementFailure: @escaping (Error) -> Void = PostingMeasurementLog.record
+        measurementFailure: @escaping (Error) -> Void = PostingMeasurementLog.record,
+        sleep: @escaping (Int) -> Void = {
+            Thread.sleep(forTimeInterval: Double($0) / 1_000)
+        }
     ) {
         self.api = api
         factory = EventBatchFactory(api: api, maximumUTF16Units: maximumUTF16Units)
         self.measurement = measurement
         self.measurementFailure = measurementFailure
+        self.sleep = sleep
     }
 
     func buildAndPost(_ request: ExecutionRequest) throws {
-        let events = try factory.make(text: request.text, trailing: request.trailing)
-        events.forEach(api.post)
+        let segments = try factory.makeSegments(steps: request.steps)
+        for (index, segment) in segments.enumerated() {
+            segment.events.forEach(api.post)
+            if index + 1 < segments.count, segment.delayAfterMilliseconds > 0 {
+                sleep(segment.delayAfterMilliseconds)
+            }
+        }
         do {
             try measurement?.record(receivedAt: request.receivedAt, postedAt: .now)
         } catch {
@@ -129,7 +159,6 @@ final class EventBatchPoster<API: EventAPI>: BatchPosting {
 
 final class CoreGraphicsBatchPoster: BatchPosting {
     static let maximumUTF16Units = 20
-
     private let poster: EventBatchPoster<SystemEventAPI>
 
     init(
@@ -156,9 +185,7 @@ final class SystemEventAPI: EventAPI {
                 keyboardEventSource: nil,
                 virtualKey: 0,
                 keyDown: true
-            ) else {
-                return nil
-            }
+            ) else { return nil }
             let units = Array(text.utf16)
             units.withUnsafeBufferPointer { buffer in
                 event.keyboardSetUnicodeString(
@@ -166,8 +193,7 @@ final class SystemEventAPI: EventAPI {
                     unicodeString: buffer.baseAddress!
                 )
             }
-            // flags 를 비워 트리거 단축키의 보조 키가 게시 시점에 병합되지 않게 한다. 비우지 않으면
-            // ⌃⌥⌘ 같은 보조 키가 눌린 상태에서 대상 앱이 문자를 단축키로 해석해 삽입하지 않는다.
+            // 트리거 보조 키가 문자열을 단축키로 해석하게 하지 않도록 비운다.
             event.flags = []
             return event
         case .keyDown(let keyCode, let modifiers):
@@ -190,9 +216,7 @@ final class SystemEventAPI: EventAPI {
             keyboardEventSource: nil,
             virtualKey: CGKeyCode(keyCode),
             keyDown: keyDown
-        ) else {
-            return nil
-        }
+        ) else { return nil }
         event.flags = modifiers.cgEventFlags
         return event
     }
