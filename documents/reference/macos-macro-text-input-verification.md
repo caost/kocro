@@ -2,7 +2,7 @@
 type: reference
 title: macOS 매크로 텍스트 입력 검증 기록
 created: 2026-09-04
-updated: 2026-09-07
+updated: 2026-09-12
 related:
   - documents/spec/platform/macos-macro-text-input.md
   - documents/plan/archive/20260904-1213-macos-macro-text-input.md
@@ -18,6 +18,80 @@ related:
 기존 F21~F24와 Input Monitoring 검증 결과는 당시 구현의 이력이며 현재 지원 범위를
 뜻하지 않는다. 현재 앱은 F13~F20까지만 지원하고, 기존 F21~F24 설정은 항목 내용과
 순서를 유지한 채 비활성·빈 단축키로 마이그레이션한다.
+
+## 2026-09-12 issue #15 검토·검증
+
+하네스가 제공한 baseline과 HEAD는 모두
+`d7f8ab3ae32836bd53650c24243bfe6cfe0789ad`다. 검토·명령 실행 대상 소스
+스냅샷은 `ad41d23b5f6e4df2f180a06567e0c809aed080dbcc60713fd821ff931616c9d6`이며,
+문서 수정 전 누적 `git_diff`와 `git_status`는 모두 비어 있었다. 이번 작업에서는
+기존 구현과 테스트를 유지하고 이 검증 기록만 수정한다. 누적 diff가 비어 있다는
+사실은 해당 커밋의 부모 대비 변경 내역을 검토했다는 뜻이 아니다.
+
+### 현재 코드 검토
+
+Executor가 SettingsView, SettingsViewModel, GeneralSettingsView,
+MacroTransferDocument, SettingsJSONCodec, JSONSettingsStore, AppController,
+KocroApp, 관련 모델·검증기와 MacroTransferTests, AppControllerTests,
+JSONSettingsStoreTests, GeneralSettingsViewTests를 읽었다.
+
+- 내보내기는 파일 패널을 열기 전에 `app.savedSettings`를 JSON 데이터로 직렬화한다.
+  편집 중인 토큰을 commit하거나 현재 draft를 저장하지 않는다. 저장된 스냅샷은
+  로드 성공 또는 파일 저장 성공 시 갱신되며, 이후 단축키 설치 실패와 분리된다.
+- 가져오기는 저장소와 같은 codec으로 마이그레이션과 전체 소스 검증을 마친 뒤
+  새 UUID를 가진 비활성 복사본을 순서대로 목록 끝에 추가한다. 기존 항목,
+  토큰 draft, 삭제 실행 취소 이력과 등록 상태를 유지하고 명시적 저장을 기다린다.
+- 여기서 검증은 기존 SettingsValidator의 규칙을 뜻한다. 비활성 항목의 단축키와
+  후속 키에는 활성 항목과 같은 유효성 검사를 모두 적용하지 않는다.
+- 파일 읽기에는 security-scoped URL 접근의 시작·종료가 대응하며, 패널 오류는
+  일반 설정 화면에 표시하고 Cocoa 사용자 취소 오류는 오류 메시지에서 제외한다.
+- 기존 테스트에는 저장 스냅샷 내보내기, 반복·빈·잘못된 파일 가져오기,
+  마이그레이션, 편집·삭제 이력 보존, 명시적 저장과 저장·등록 실패 경로의
+  검증 코드가 있다. 테스트 코드의 존재를 이번 실행의 통과 근거로 취급하지 않는다.
+
+읽은 범위에서 구현 수정이 필요한 결함을 확정하지 않았다. 이는 Executor의 코드
+검토 기록이며 하네스의 독립 Reviewer 판정은 아직 제공되지 않았다. issue #15
+원문도 제공되지 않아 위에서 확인한 동작을 확정된 이슈 인수 조건으로 간주하지
+않는다. 원문과 구현의 요구사항 대응은 Conductor가 확인해야 한다.
+
+### 이번 자동 검증 결과
+
+아래 두 명령은 승인된 계획의 명령 ID로 실행했다. 하네스는
+`macos-xcode-seatbelt` 격리 환경에서 `/usr/bin/xcodebuild`를 사용하고,
+실행별 `-resultBundlePath` 및 공통 `-derivedDataPath`를 추가했다.
+로그에 기록된 환경은 macOS 26.6.2(25G83), arm64다.
+
+| 명령 ID | 승인된 명령 | 종료 코드·결과 |
+| --- | --- | --- |
+| `xctest` | `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS'` | 65, 실패. 테스트 runner 설치 또는 실행 단계에서 `Pseudo Terminal Setup Error` 발생. 통과한 테스트 수를 확정할 집계 근거 없음 |
+| `release_build` | `xcodebuild build -project apps/macos/Kocro.xcodeproj -scheme Kocro -configuration Release CODE_SIGN_IDENTITY=-` | 0, 성공 |
+
+XCTest 실패 진단은 `IDEPseudoTerminalDomain Code: 7`, `Errno: 1`,
+`NSPOSIXErrorDomain Code: 1 (Operation not permitted)`다. 추가로 시스템 로그
+아카이브 이동에서도 권한 오류가 발생했다. 관찰된 실패는 테스트 assertion 실패가
+아닌 runner 실행 환경의 권한 문제이며, Xcode 라이선스 미동의 오류는 아니다.
+정확히 어떤 격리 규칙이 원인인지는 이 로그만으로 확정하지 않는다. 구현·테스트를
+바꾸거나 같은 환경에서 반복 실행하여 실패를 숨기지 않는다. 하네스 담당 단계에서
+runner의 의사 터미널 생성·실행 환경을 확인한 뒤 승인된 전체 XCTest 명령을 다시
+실행하고 종료 코드와 테스트 집계를 확보해야 한다.
+
+실행 근거는 하네스의 `tool-result-072e3d2177b54e0591e7823b562a2978.json`
+(XCTest) 및 `tool-result-ee05a17b61f345f684b2d495e3a230c1.json`
+(Release 빌드)에 있다. 실행별 결과 번들은 각각
+`1c20a0a26296452c92f5896b161cf55e.xcresult`,
+`c2afa892a65b4127aad307b82a472bea.xcresult`다. 이 자료는 하네스 로컬
+실행 기록이며 저장소에 추가하지 않는다.
+
+### 완료 판정과 남은 확인
+
+Release 빌드 성공과 전체 XCTest 실패를 구분한다. 사용자가 전달한 과거 통과
+진술이나 이 문서의 이전 실행 기록은 이번 XCTest 실패를 대체하지 않는다.
+파일 패널의 실제 취소·오류 표시 및 실제 앱 가져오기·내보내기는 이번에 실행하지
+않았으며, 사용자 설정·시스템 권한·로그인 항목도 변경하지 않았다.
+
+**issue #15 완료 판정은 보류한다.** 전체 XCTest의 성공 근거, issue 원문과의
+대응 확인 및 하네스의 후속 검토가 남아 있다. 외부 GitHub 이슈 종료는 수행하지
+않았으며 담당 단계에 전달한다.
 
 ## 2026-09-07 issue #8 후속 검증
 
