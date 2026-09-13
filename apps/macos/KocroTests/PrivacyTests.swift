@@ -16,10 +16,11 @@ final class PrivacyTests: XCTestCase {
     }
 
     func testFlatAndGroupedMenuDisplayStringsNeverExposeMacroBodies() {
-        let macros = (0..<23).map { index in
+        let bodies = (0..<23).map { "PRIVATE-MACRO-BODY-\($0)-END" }
+        let macros = bodies.enumerated().map { index, body in
             Fixtures.macro(
                 title: index.isMultiple(of: 2) ? "" : "제목 \(index)",
-                text: "PRIVATE-MACRO-BODY-\(index)-END"
+                text: body
             )
         }
         let registration = Dictionary(uniqueKeysWithValues: macros.map {
@@ -35,9 +36,9 @@ final class PrivacyTests: XCTestCase {
 
         XCTAssertEqual(items.count, macros.count)
         XCTAssertFalse(layout.groups.isEmpty)
-        for macro in macros {
+        for body in bodies {
             for string in strings {
-                XCTAssertFalse(string.contains(macro.text))
+                XCTAssertFalse(string.contains(body))
             }
         }
     }

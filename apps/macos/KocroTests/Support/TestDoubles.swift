@@ -9,10 +9,7 @@ final class MemorySettingsFile: SettingsFile {
     var replaceCount = 0
     var writeError: Error?
 
-    init(contents: Data?) {
-        self.contents = contents
-    }
-
+    init(contents: Data?) { self.contents = contents }
     var exists: Bool { contents != nil }
 
     func read() throws -> Data {
@@ -35,14 +32,8 @@ enum Fixtures {
         text: String,
         shortcut: ShortcutDefinition = .init(key: .function(13), modifiers: [])
     ) -> MacroDefinition {
-        .init(
-            id: id,
-            title: title,
-            isEnabled: true,
-            shortcut: shortcut,
-            text: text,
-            trailingKey: nil
-        )
+        .init(id: id, title: title, isEnabled: true, shortcut: shortcut,
+              text: text, trailingKey: nil)
     }
 
     static func settings(text: String) -> AppSettings {
@@ -52,7 +43,6 @@ enum Fixtures {
     static func carbon(_ number: Int) -> MacroDefinition {
         macro(text: "c\(number)", shortcut: .init(key: .function(number), modifiers: []))
     }
-
 }
 
 final class CarbonSpy: CarbonServing {
@@ -64,10 +54,7 @@ final class CarbonSpy: CarbonServing {
     private(set) var unregisteredIDs: [UInt32] = []
     private(set) var lifecycleMainThreads: [Bool] = []
 
-    init(failingRegistration: Int? = nil) {
-        self.failingRegistration = failingRegistration
-    }
-
+    init(failingRegistration: Int? = nil) { self.failingRegistration = failingRegistration }
     var registrationCount: Int { registrations.count }
 
     func register(id: UInt32, shortcut: ShortcutDefinition) -> RegistrationState {
@@ -87,9 +74,7 @@ final class CarbonSpy: CarbonServing {
         onUnregisterID?(id)
     }
 
-    func send(id: UInt32) {
-        onRegistrationID?(id, ContinuousClock.now)
-    }
+    func send(id: UInt32) { onRegistrationID?(id, ContinuousClock.now) }
 }
 
 final class CarbonHotKeyAPISpy: CarbonHotKeyAPI {
@@ -109,8 +94,7 @@ final class CarbonHotKeyAPISpy: CarbonHotKeyAPI {
         self.options.append(options)
         registeredIDs.append(hotKeyID.id)
         let reference = registrationStatus == noErr
-            ? EventHotKeyRef(bitPattern: Int(hotKeyID.id))
-            : nil
+            ? EventHotKeyRef(bitPattern: Int(hotKeyID.id)) : nil
         return (registrationStatus, reference)
     }
 
@@ -122,14 +106,8 @@ final class CarbonHotKeyAPISpy: CarbonHotKeyAPI {
 
 final class ObjectReleaseBox {
     var value: AnyObject?
-
-    init(_ value: AnyObject) {
-        self.value = value
-    }
-
-    func releaseValue() {
-        value = nil
-    }
+    init(_ value: AnyObject) { self.value = value }
+    func releaseValue() { value = nil }
 }
 
 final class PermissionAPISpy: PermissionAPI {
@@ -139,9 +117,7 @@ final class PermissionAPISpy: PermissionAPI {
     private(set) var currentAccessibilityChecks = 0
     private(set) var openedSettings: [PrivacyKind] = []
 
-    init(accessibility: Bool) {
-        self.accessibility = accessibility
-    }
+    init(accessibility: Bool) { self.accessibility = accessibility }
 
     func accessibilityTrusted(prompt: Bool) -> Bool {
         accessibilityChecks.append(prompt)
@@ -154,24 +130,18 @@ final class PermissionAPISpy: PermissionAPI {
         return accessibility
     }
 
-    func openSettings(_ kind: PrivacyKind) {
-        openedSettings.append(kind)
-    }
+    func openSettings(_ kind: PrivacyKind) { openedSettings.append(kind) }
 }
 
 final class EventAPISpy: EventAPI {
     typealias Event = Kocro.EventKind
-
     private let lock = NSLock()
     private var creationIndex = 0
     private var createdStorage: [Kocro.EventKind] = []
     private var postedStorage: [Kocro.EventKind] = []
     var failAt: Int?
 
-    init(failAt: Int? = nil) {
-        self.failAt = failAt
-    }
-
+    init(failAt: Int? = nil) { self.failAt = failAt }
     var created: [Kocro.EventKind] { locked { createdStorage } }
     var posted: [Kocro.EventKind] { locked { postedStorage } }
 
@@ -183,9 +153,7 @@ final class EventAPISpy: EventAPI {
         }
     }
 
-    func post(_ event: Kocro.EventKind) {
-        locked { postedStorage.append(event) }
-    }
+    func post(_ event: Kocro.EventKind) { locked { postedStorage.append(event) } }
 
     private func locked<T>(_ body: () -> T) -> T {
         lock.lock()
@@ -201,13 +169,17 @@ final class RecordingBatchPoster: BatchPosting {
     private var currentConcurrent = 0
     private var maximumConcurrentStorage = 0
 
-    init(error: Error? = nil) {
-        self.error = error
-    }
-
+    init(error: Error? = nil) { self.error = error }
     var requests: [ExecutionRequest] { locked { requestsStorage } }
-    var texts: [String] { requests.map(\.text) }
-    var trailingKeys: [TrailingKey?] { requests.map(\.trailing) }
+    var steps: [[MacroStep]] { requests.map(\.steps) }
+    var texts: [String] {
+        requests.map { request in
+            request.steps.compactMap { step -> String? in
+                guard case .text(let value) = step.kind else { return nil }
+                return value
+            }.joined()
+        }
+    }
     var maximumConcurrent: Int { locked { maximumConcurrentStorage } }
 
     func buildAndPost(_ request: ExecutionRequest) throws {
@@ -233,11 +205,20 @@ final class BlockingPoster: BatchPosting {
     private let releaseFirst = DispatchSemaphore(value: 0)
     private let lock = NSLock()
     private var invocationCount = 0
-    private var textsStorage: [String] = []
+    private var requestsStorage: [ExecutionRequest] = []
     private var currentConcurrent = 0
     private var maximumConcurrentStorage = 0
 
-    var texts: [String] { locked { textsStorage } }
+    var requests: [ExecutionRequest] { locked { requestsStorage } }
+    var steps: [[MacroStep]] { requests.map(\.steps) }
+    var texts: [String] {
+        requests.map { request in
+            request.steps.compactMap { step -> String? in
+                guard case .text(let value) = step.kind else { return nil }
+                return value
+            }.joined()
+        }
+    }
     var maximumConcurrent: Int { locked { maximumConcurrentStorage } }
 
     func buildAndPost(_ request: ExecutionRequest) throws {
@@ -245,11 +226,10 @@ final class BlockingPoster: BatchPosting {
             invocationCount += 1
             currentConcurrent += 1
             maximumConcurrentStorage = max(maximumConcurrentStorage, currentConcurrent)
-            textsStorage.append(request.text)
+            requestsStorage.append(request)
             return invocationCount == 1
         }
         defer { locked { currentConcurrent -= 1 } }
-
         if isFirst {
             firstEntered.signal()
             releaseFirst.wait()
@@ -260,9 +240,7 @@ final class BlockingPoster: BatchPosting {
         firstEntered.wait(timeout: .now() + 2) == .success
     }
 
-    func releaseFirstRequest() {
-        releaseFirst.signal()
-    }
+    func releaseFirstRequest() { releaseFirst.signal() }
 
     @discardableResult
     private func locked<T>(_ body: () -> T) -> T {
@@ -279,13 +257,8 @@ final class StoreSpy: SettingsStoring {
     private var nextSaveError: Error?
     private(set) var savedValues: [AppSettings] = []
 
-    init(loadResult: Result<AppSettings, Error>) {
-        self.loadResult = loadResult
-    }
-
-    func load() throws -> AppSettings {
-        try loadResult.get()
-    }
+    init(loadResult: Result<AppSettings, Error>) { self.loadResult = loadResult }
+    func load() throws -> AppSettings { try loadResult.get() }
 
     func save(_ value: AppSettings) throws {
         onSave?()
@@ -298,9 +271,7 @@ final class StoreSpy: SettingsStoring {
         loadResult = .success(value)
     }
 
-    func failOnce(_ error: Error) {
-        nextSaveError = error
-    }
+    func failOnce(_ error: Error) { nextSaveError = error }
 }
 
 @MainActor
@@ -311,16 +282,13 @@ final class PipelineHarness {
     let queue: MacroExecutionQueue
     let app: AppController
 
+    var postedSteps: [[MacroStep]] { poster.steps }
     var postedTexts: [String] { poster.texts }
-    var postedTrailingKeys: [TrailingKey?] { poster.trailingKeys }
     var maximumConcurrentPosts: Int { poster.maximumConcurrent }
 
     init(accessibility: Bool) {
         store = StoreSpy(loadResult: .success(.init(macros: [])))
-        queue = MacroExecutionQueue(
-            poster: poster,
-            accessibility: { accessibility }
-        )
+        queue = MacroExecutionQueue(poster: poster, accessibility: { accessibility })
         app = AppController(
             store: store,
             shortcuts: shortcuts,
@@ -337,21 +305,14 @@ final class PipelineHarness {
         app.start()
     }
 
-    func trigger(_ id: UUID) {
-        shortcuts.trigger(id)
-    }
-
-    func drain() async {
-        await queue.drain()
-    }
+    func trigger(_ id: UUID) { shortcuts.trigger(id) }
+    func drain() async { await queue.drain() }
 
     func editText(_ text: String) {
-        app.draft.macros[0].text = text
+        app.draft.macros[0] = app.draft.macros[0].withText(text)
     }
 
-    func failNextSave() {
-        store.failOnce(StoreError.io)
-    }
+    func failNextSave() { store.failOnce(StoreError.io) }
 
     func saveAndTrigger() {
         app.save()
@@ -369,9 +330,7 @@ final class ShortcutSpy: ShortcutCoordinating, @unchecked Sendable {
     private(set) var commitCount = 0
     private(set) var cancelCount = 0
 
-    init(states: [UUID: RegistrationState] = [:]) {
-        statesStorage = states
-    }
+    init(states: [UUID: RegistrationState] = [:]) { statesStorage = states }
 
     var states: [UUID: RegistrationState] {
         get { locked { statesStorage } }
@@ -383,18 +342,14 @@ final class ShortcutSpy: ShortcutCoordinating, @unchecked Sendable {
     }
     var replaceCalls: [[MacroDefinition]] { locked { replaceCallsStorage } }
 
-    func prepareReplacement(
-        with settings: AppSettings
-    ) -> any ShortcutReplacementCandidate {
+    func prepareReplacement(with settings: AppSettings) -> any ShortcutReplacementCandidate {
         prepareCalls.append(settings)
         let candidateSettings = nextCandidateSettings ?? settings
         replaceCallsStorage.append(settings.macros)
         let result = statesStorage.isEmpty
-            ? Dictionary(
-                uniqueKeysWithValues: candidateSettings.macros.filter(\.isEnabled).map {
-                    ($0.id, RegistrationState.registered)
-                }
-            )
+            ? Dictionary(uniqueKeysWithValues: candidateSettings.macros.filter(\.isEnabled).map {
+                ($0.id, RegistrationState.registered)
+            })
             : statesStorage
         return ShortcutCandidateSpy(settings: candidateSettings, states: result)
     }
@@ -408,10 +363,7 @@ final class ShortcutSpy: ShortcutCoordinating, @unchecked Sendable {
         return candidate.states
     }
 
-    func cancel(_ candidate: any ShortcutReplacementCandidate) {
-        cancelCount += 1
-    }
-
+    func cancel(_ candidate: any ShortcutReplacementCandidate) { cancelCount += 1 }
     func shutdown() {}
 
     func trigger(_ id: UUID) {
@@ -513,9 +465,7 @@ final class QueueSpy: ExecutionQueueing, @unchecked Sendable {
         set { locked { idleHandler = newValue } }
     }
 
-    func enqueue(_ request: ExecutionRequest) {
-        locked { requestsStorage.append(request) }
-    }
+    func enqueue(_ request: ExecutionRequest) { locked { requestsStorage.append(request) } }
 
     func reject(id: UUID, shortcut: String, kind: ExecutionResultKind) {
         locked { rejectionsStorage.append(.init(id: id, shortcut: shortcut, kind: kind)) }
@@ -556,9 +506,7 @@ final class LoginServiceSpy: LoginService {
     private(set) var registerCount = 0
     private(set) var unregisterCount = 0
 
-    init(status: SMAppService.Status) {
-        self.status = status
-    }
+    init(status: SMAppService.Status) { self.status = status }
 
     func register() throws {
         registerCount += 1

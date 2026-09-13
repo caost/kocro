@@ -40,11 +40,10 @@ private struct PersistedMacroDefinition: Decodable {
     let title: String?
     let isEnabled: Bool
     let shortcut: ShortcutDefinition
-    let text: String
-    let trailingKey: TrailingKey?
+    let steps: [MacroStep]
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, isEnabled, shortcut, text, trailingKey
+        case id, title, isEnabled, shortcut, steps, text, trailingKey
     }
 
     init(from decoder: Decoder) throws {
@@ -55,8 +54,13 @@ private struct PersistedMacroDefinition: Decodable {
             : nil
         isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
         shortcut = try container.decode(ShortcutDefinition.self, forKey: .shortcut)
-        text = try container.decode(String.self, forKey: .text)
-        trailingKey = try container.decodeIfPresent(TrailingKey.self, forKey: .trailingKey)
+        if container.contains(.steps) {
+            steps = try container.decode([MacroStep].self, forKey: .steps)
+        } else {
+            let text = try container.decode(String.self, forKey: .text)
+            let trailing = try container.decodeIfPresent(TrailingKey.self, forKey: .trailingKey)
+            steps = MacroStep.legacySteps(text: text, trailingKey: trailing)
+        }
     }
 
     func definition(defaultTitle: String) -> MacroDefinition {
@@ -65,8 +69,7 @@ private struct PersistedMacroDefinition: Decodable {
             title: title ?? defaultTitle,
             isEnabled: isEnabled,
             shortcut: shortcut,
-            text: text,
-            trailingKey: trailingKey
+            steps: steps
         )
     }
 }

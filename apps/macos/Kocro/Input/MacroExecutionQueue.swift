@@ -3,8 +3,7 @@ import Foundation
 struct ExecutionRequest: Sendable {
     let id: UUID
     let shortcut: String
-    let text: String
-    let trailing: TrailingKey?
+    let steps: [MacroStep]
     let receivedAt: ContinuousClock.Instant
 }
 
@@ -68,7 +67,7 @@ final class MacroExecutionQueue: @unchecked Sendable {
     }
 
     func enqueue(_ request: ExecutionRequest) {
-        // ExecutionRequest 는 구조체이므로 이 캡처가 곧 수신 시점의 복사본이다.
+        // 단계 배열을 포함한 수신 시점의 값 복사본을 직렬 큐에서 실행한다.
         let snapshot = request
         admit { [self] in
             let kind: ExecutionResultKind

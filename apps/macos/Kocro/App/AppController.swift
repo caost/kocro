@@ -78,12 +78,11 @@ final class ExecutionSnapshotStore: @unchecked Sendable {
     ) -> ExecutionRequest? {
         lock.lock()
         defer { lock.unlock() }
-        guard let macro = values[id], !macro.text.isEmpty else { return nil }
+        guard let macro = values[id], macro.steps.contains(where: \.isEmitting) else { return nil }
         return ExecutionRequest(
             id: id,
             shortcut: macro.shortcut.displayName,
-            text: macro.text,
-            trailing: macro.trailingKey,
+            steps: macro.steps,
             receivedAt: receivedAt
         )
     }

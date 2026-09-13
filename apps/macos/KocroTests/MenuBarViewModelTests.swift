@@ -140,16 +140,17 @@ final class MenuBarViewModelTests: XCTestCase {
 
     func testMenuTitlesUseUUIDFallbackAndShortcutsUseDisplayName() throws {
         let id = try XCTUnwrap(UUID(uuidString: "A1B2C3D4-1111-2222-3333-444444444444"))
+        let bodies = ["private body one", "private body two", "private body three"]
         let macros = [
-            Fixtures.macro(id: id, text: "private body one"),
+            Fixtures.macro(id: id, text: bodies[0]),
             Fixtures.macro(
                 title: "인사",
-                text: "private body two",
+                text: bodies[1],
                 shortcut: .init(key: .letter("a"), modifiers: [.command, .shift])
             ),
             Fixtures.macro(
                 title: "이동",
-                text: "private body three",
+                text: bodies[2],
                 shortcut: .init(key: .keyCode(48), modifiers: [.control, .option])
             ),
         ]
@@ -162,10 +163,10 @@ final class MenuBarViewModelTests: XCTestCase {
         XCTAssertEqual(items.map(\.shortcut), macros.map { $0.shortcut.displayName })
         for item in items {
             XCTAssertEqual(item.displayName, "\(item.title) · \(item.shortcut)")
-            for macro in macros {
-                XCTAssertFalse(item.title.contains(macro.text))
-                XCTAssertFalse(item.shortcut.contains(macro.text))
-                XCTAssertFalse(item.displayName.contains(macro.text))
+            for body in bodies {
+                XCTAssertFalse(item.title.contains(body))
+                XCTAssertFalse(item.shortcut.contains(body))
+                XCTAssertFalse(item.displayName.contains(body))
             }
         }
     }
