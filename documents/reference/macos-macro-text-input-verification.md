@@ -55,10 +55,21 @@ SPEC-001~003과 STD-001~007을 반영한 결과다. 앞선 병합 커밋
 Runtime(`flags=0x10002(adhoc,runtime)`)이며 `codesign --verify --strict`를 빌드 산출물과
 DMG에서 마운트한 사본 양쪽에서 통과했다. `hdiutil verify` checksum도 VALID다.
 
-사용자가 이 DMG로 설치한 앱을 실행해 **메뉴 바 매크로 목록과 목록에서의 실행이 의도대로
-동작한다고 확인했다.** 확인 주체는 사용자이며 이 문서 작성자가 관찰한 기록이 아니다.
-항목별 관찰값(빈 목록 문구, 10개 초과 시 하위 메뉴 경계, 비활성 항목 제외)은 개별로
-보고받지 않았으므로 세부 판정으로 기록하지 않는다.
+사용자가 이 DMG로 설치한 앱에서 아래 항목을 확인했다고 보고했다. 확인 주체는 사용자이며
+이 문서 작성자가 관찰한 기록이 아니다.
+
+| 확인 항목 | 대응 규칙 | 결과 |
+| --- | --- | --- |
+| 메뉴 바 아이콘 선택 시 실행 가능한 매크로 목록 표시 | `macos-final-ui.md` 메뉴 바 메뉴 2번 항목, 수용 기준 7 | 통과 |
+| 목록에서 항목을 선택해 매크로 실행 | `macos-final-ui.md` 매크로 목록, `macos-macro-text-input.md` 수용 기준 15 | 통과 |
+| 실행 가능한 매크로가 없을 때 `실행 가능한 매크로 없음` 표시 | `macos-final-ui.md` 매크로 목록의 빈 목록 규칙 | 통과 |
+| 10개를 넘으면 `매크로 11–20` 형태의 하위 메뉴로 묶여 탐색 가능 | `macos-final-ui.md` 매크로 목록의 묶음 규칙, 수용 기준 7 | 통과 |
+| 비활성 매크로가 목록에서 제외됨 | `macos-final-ui.md` 매크로 목록의 대상 범위 | 통과 |
+
+목록 대상 범위 가운데 단축키 등록에 실패한 매크로의 제외는 실제 등록 충돌을 만들어야
+하므로 이번에도 재현하지 않았다. 해당 동작은
+`MenuBarViewModelTests.testExecutableMacrosExcludeDisabledUnregisteredAndEmptyTextInRuntimeOrder`가
+검증한다.
 
 전달한 앱은 Developer ID 서명과 notarization이 없어 Gatekeeper 최초 실행 차단을 우회해야
 했고, cdhash가 바뀌어 Accessibility 권한을 다시 승인한 상태에서 확인했다.
