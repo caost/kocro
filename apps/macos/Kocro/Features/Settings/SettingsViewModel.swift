@@ -181,14 +181,20 @@ final class SettingsViewModel: ObservableObject {
         addStep(.text(""), macroID: macroID)
     }
 
+    /// `키 조합 추가`가 새로 만드는 단계의 기본값이다. Return은 보조 키 없이 쓸 수 있고
+    /// 문자열 뒤에 가장 자주 붙는 키라 기본값으로 둔다.
+    static let defaultKeyStep = KeyCombination(keyCode: MacKeyCodePolicy.returnKeyCode, modifiers: [])
+    /// `딜레이 추가`가 새로 만드는 단계의 기본 대기 시간(ms)이다.
+    static let defaultDelayMilliseconds = 500
+
     @discardableResult
     func addKeyStep(macroID: UUID) -> UUID? {
-        addStep(.keys(.init(keyCode: 36, modifiers: [])), macroID: macroID)
+        addStep(.keys(Self.defaultKeyStep), macroID: macroID)
     }
 
     @discardableResult
     func addDelayStep(macroID: UUID) -> UUID? {
-        addStep(.delay(milliseconds: 500), macroID: macroID)
+        addStep(.delay(milliseconds: Self.defaultDelayMilliseconds), macroID: macroID)
     }
 
     private func addStep(_ kind: MacroStep.Kind, macroID: UUID) -> UUID? {

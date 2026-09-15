@@ -416,6 +416,110 @@ final class AppControllerTests: XCTestCase {
         XCTAssertEqual(permissions.currentAccessibilityChecks, 1)
     }
 
+    func testMenuRunEnqueuesRuntimeSnapshotAndPublishesQueueResult() async throws {
+        var macro = Fixtures.macro(
+            text: "runtime secret",
+            shortcut: .init(key: .letter("a"), modifiers: [.command, .shift])
+        )
+        macro.steps.append(.init(kind: .keys(.init(keyCode: 48, modifiers: []))))
+        let queue = QueueSpy()
+        let app = makeApp(
+            store: StoreSpy(loadResult: .success(.init(macros: [macro]))),
+            queue: queue
+        )
+        app.start()
+        app.draft.macros[0] = app.draft.macros[0].withText("unsaved secret")
+        let before = ContinuousClock.now
+
+        app.runMacro(id: macro.id)
+
+        let after = ContinuousClock.now
+        XCTAssertEqual(queue.requests.count, 1)
+        let request = try XCTUnwrap(queue.requests.first)
+        XCTAssertEqual(request.id, macro.id)
+        XCTAssertEqual(request.steps, macro.steps)
+        XCTAssertEqual(request.shortcut, macro.shortcut.displayName)
+        XCTAssertGreaterThanOrEqual(request.receivedAt, before)
+        XCTAssertLessThanOrEqual(request.receivedAt, after)
+        XCTAssertTrue(queue.rejections.isEmpty)
+
+        let result = ExecutionResult(
+            id: request.id,
+            shortcut: request.shortcut,
+            kind: .postingRequested,
+            date: Date()
+        )
+        let published = expectation(description: "Menu execution result published")
+        let observation = app.$lastResult.sink { value in
+            if value == result { published.fulfill() }
+        }
+        queue.emitResult(result)
+        await fulfillment(of: [published], timeout: 2)
+        XCTAssertEqual(app.lastResult, result)
+        observation.cancel()
+    }
+
+    func testMenuRunRejectsMissingCurrentAccessibilityWithoutEnqueueing() {
+        let macro = Fixtures.macro(text: "secret")
+        let permissions = PermissionSpy(
+            state: .init(accessibility: true),
+            currentAccessibility: false
+        )
+        let queue = QueueSpy()
+        let app = makeApp(
+            store: StoreSpy(loadResult: .success(.init(macros: [macro]))),
+            permissions: permissions,
+            queue: queue
+        )
+        app.start()
+
+        app.runMacro(id: macro.id)
+
+        XCTAssertTrue(queue.requests.isEmpty)
+        XCTAssertEqual(queue.rejections.map(\.id), [macro.id])
+        XCTAssertEqual(queue.rejections.map(\.shortcut), [macro.shortcut.displayName])
+        XCTAssertEqual(queue.rejections.map(\.kind), [.accessibilityRequired])
+        XCTAssertEqual(permissions.currentAccessibilityChecks, 1)
+    }
+
+    func testMenuRunRejectsUnregisteredDisabledEmptyAndDeletedDefinitions() {
+        let registered = Fixtures.macro(text: "registered")
+        let failed = Fixtures.macro(text: "failed")
+        var disabled = Fixtures.macro(text: "disabled")
+        disabled.isEnabled = false
+        let empty = Fixtures.macro(text: "")
+        let unknownID = UUID()
+        let shortcuts = ShortcutSpy(states: [
+            registered.id: .registered,
+            failed.id: .registrationFailed,
+            disabled.id: .registered,
+            empty.id: .registered,
+        ])
+        let permissions = PermissionSpy()
+        let queue = QueueSpy()
+        let app = makeApp(
+            store: StoreSpy(loadResult: .success(.init(macros: [registered, failed, disabled, empty]))),
+            shortcuts: shortcuts,
+            permissions: permissions,
+            queue: queue
+        )
+        app.start()
+        for id in [failed.id, disabled.id, empty.id, unknownID] {
+            app.runMacro(id: id)
+        }
+
+        app.draft = .init(macros: [])
+        app.save()
+        XCTAssertNil(app.saveError)
+        XCTAssertTrue(app.runtime.macros.isEmpty)
+        app.runMacro(id: registered.id)
+
+        XCTAssertTrue(queue.requests.isEmpty)
+        XCTAssertEqual(queue.rejections.map(\.id), [failed.id, disabled.id, empty.id, unknownID, registered.id])
+        XCTAssertEqual(queue.rejections.map(\.kind), Array(repeating: .missingDefinition, count: 5))
+        XCTAssertEqual(permissions.currentAccessibilityChecks, 0)
+    }
+
     func testRefreshPermissionsReconcilesRegistrationWithAccessibilityOnly() {
         let value = AppSettings(macros: [Fixtures.carbon(13)])
         let permissions = PermissionSpy(state: .init(accessibility: true), currentAccessibility: true)

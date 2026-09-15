@@ -15,7 +15,7 @@ protocol EventAPI: AnyObject {
 
 enum EventBuildError: Error, Equatable {
     case creationFailed
-    case invalidTrailingKey
+    case invalidKeyCombination
     case invalidDelay
 }
 
@@ -51,17 +51,12 @@ struct EventBatchFactory<API: EventAPI> {
         return output
     }
 
-    func make(text: String, trailing: TrailingKey?) throws -> [API.Event] {
-        try makeSegments(steps: MacroStep.legacySteps(text: text, trailingKey: trailing))
-            .flatMap(\.events)
-    }
-
     func makeSegments(steps: [MacroStep]) throws -> [EventSegment] {
         // Validate the complete sequence before allocating any events.
         for step in steps {
             switch step.kind {
             case .keys(let combination):
-                guard combination.isValid else { throw EventBuildError.invalidTrailingKey }
+                guard combination.isValid else { throw EventBuildError.invalidKeyCombination }
             case .delay(let milliseconds):
                 guard MacroStep.delayRange.contains(milliseconds) else {
                     throw EventBuildError.invalidDelay

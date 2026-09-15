@@ -29,7 +29,9 @@ final class EventBatchFactoryTests: XCTestCase {
     func testBuildCreatesCompleteUnicodeAndTrailingBatchBeforePosting() throws {
         let api = EventAPISpy()
         let factory = EventBatchFactory(api: api, maximumUTF16Units: 4)
-        let batch = try factory.make(text: "abcdef", trailing: .enter)
+        let batch = try factory.makeSegments(
+            steps: MacroStep.legacySteps(text: "abcdef", trailingKey: .enter)
+        ).flatMap(\.events)
         XCTAssertEqual(api.created, [.unicode("abcd"), .unicode("ef"), .keyDown(36, []), .keyUp(36, [])])
         XCTAssertEqual(api.posted, [])
         XCTAssertEqual(batch.count, 4)
@@ -38,7 +40,9 @@ final class EventBatchFactoryTests: XCTestCase {
     func testCustomTrailingKeyUsesSameModifiersForOneDownUpPair() throws {
         let api = EventAPISpy()
         let factory = EventBatchFactory(api: api, maximumUTF16Units: 20)
-        _ = try factory.make(text: "a", trailing: .custom(keyCode: 36, modifiers: [.command, .shift]))
+        _ = try factory.makeSegments(steps: MacroStep.legacySteps(
+            text: "a", trailingKey: .custom(keyCode: 36, modifiers: [.command, .shift])
+        ))
         XCTAssertEqual(Array(api.created.suffix(2)), [.keyDown(36, [.command, .shift]), .keyUp(36, [.command, .shift])])
     }
 
@@ -70,7 +74,9 @@ final class EventBatchFactoryTests: XCTestCase {
         for trailing in invalidValues {
             let api = EventAPISpy()
             let factory = EventBatchFactory(api: api, maximumUTF16Units: 20)
-            XCTAssertThrowsError(try factory.make(text: "secret", trailing: trailing))
+            XCTAssertThrowsError(try factory.makeSegments(
+                steps: MacroStep.legacySteps(text: "secret", trailingKey: trailing)
+            ))
             XCTAssertEqual(api.created, [])
             XCTAssertEqual(api.posted, [])
         }

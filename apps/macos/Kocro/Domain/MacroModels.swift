@@ -109,9 +109,9 @@ struct KeyCombination: Codable, Hashable, Sendable {
 
     init?(trailingKey: TrailingKey?) {
         switch trailingKey {
-        case .enter?: self.init(keyCode: 36, modifiers: [])
-        case .space?: self.init(keyCode: 49, modifiers: [])
-        case .tab?: self.init(keyCode: 48, modifiers: [])
+        case .enter?: self.init(keyCode: MacKeyCodePolicy.returnKeyCode, modifiers: [])
+        case .space?: self.init(keyCode: MacKeyCodePolicy.spaceKeyCode, modifiers: [])
+        case .tab?: self.init(keyCode: MacKeyCodePolicy.tabKeyCode, modifiers: [])
         case .custom(let code?, let flags)?: self.init(keyCode: code, modifiers: flags)
         case nil, .custom(nil, _)?, .customFunction?: return nil
         }
@@ -190,12 +190,6 @@ struct MacroDefinition: Codable, Equatable, Identifiable, Sendable {
         self.steps = steps
     }
 
-    init(id: UUID, title: String = "", isEnabled: Bool,
-         shortcut: ShortcutDefinition, text: String, trailingKey: TrailingKey?) {
-        self.init(id: id, title: title, isEnabled: isEnabled, shortcut: shortcut,
-                  steps: MacroStep.legacySteps(text: text, trailingKey: trailingKey))
-    }
-
     var combinedTextCount: Int {
         steps.reduce(0) { count, step in
             guard case .text(let text) = step.kind else { return count }
@@ -222,17 +216,10 @@ struct MacroDefinition: Codable, Equatable, Identifiable, Sendable {
              shortcut: .init(key: .empty, modifiers: []), steps: [])
     }
 
-    func withText(_ value: String) -> Self {
-        var copy = self
-        if let index = copy.steps.firstIndex(where: {
-            if case .text = $0.kind { return true }
-            return false
-        }) {
-            copy.steps[index].kind = .text(value)
-        } else {
-            copy.steps.append(.init(kind: .text(value)))
-        }
-        return copy
+    /// 실행 경로가 요구하는 조건이다. 메뉴 바 목록과 실행 스냅샷이 같은 판정을 공유해
+    /// 메뉴에 보이는 항목과 실제로 실행할 수 있는 항목이 어긋나지 않게 한다.
+    func isExecutable(registration: RegistrationState?) -> Bool {
+        isEnabled && registration == .registered && steps.contains(where: \.isEmitting)
     }
 }
 

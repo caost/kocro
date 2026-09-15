@@ -21,6 +21,10 @@ enum MacKeyCodePolicy {
     static let standaloneFunctionNumbers = 13...supportedFunctionNumbers.upperBound
     // 과거 저장 형식의 마이그레이션 대상이므로 현재 지원 범위와 별도로 유지한다.
     static let removedLegacyFunctionNumbers = 21...24
+    /// 레거시 `TrailingKey`와 새 키 조합 단계가 함께 쓰는 기준 키 코드다.
+    static let returnKeyCode: UInt16 = 36
+    static let spaceKeyCode: UInt16 = 49
+    static let tabKeyCode: UInt16 = 48
 
     static func shortcutRequiresModifiers(_ key: ShortcutKey) -> Bool {
         guard case .function(let number) = key else { return true }

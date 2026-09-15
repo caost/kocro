@@ -1,4 +1,15 @@
-# 이슈 #14 결정 요약
+---
+type: adr
+title: 매크로 실행 순서를 단계 배열로 편집
+created: 2026-09-12
+updated: 2026-09-12
+related:
+  - documents/spec/platform/macos-macro-text-input.md
+  - documents/spec/platform/macos-final-ui.md
+status: accepted
+---
+
+# 매크로 실행 순서를 단계 배열로 편집
 
 - 매크로 실행 순서는 문자열, 키 조합과 딜레이 단계의 배열로 구성한다.
 - 처음 사용하는 사람이 구분 문법을 익히지 않아도 되도록 하나의 동작을 하나의 행으로 표시한다.
