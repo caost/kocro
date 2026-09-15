@@ -2,7 +2,7 @@
 type: reference
 title: macOS 매크로 텍스트 입력 검증 기록
 created: 2026-09-04
-updated: 2026-09-12
+updated: 2026-09-15
 related:
   - documents/spec/platform/macos-macro-text-input.md
   - documents/plan/archive/20260904-1213-macos-macro-text-input.md
@@ -18,6 +18,41 @@ related:
 기존 F21~F24와 Input Monitoring 검증 결과는 당시 구현의 이력이며 현재 지원 범위를
 뜻하지 않는다. 현재 앱은 F13~F20까지만 지원하고, 기존 F21~F24 설정은 항목 내용과
 순서를 유지한 채 비활성·빈 단축키로 마이그레이션한다.
+
+## 2026-09-15 issue #15 리뷰 반영 뒤 검증
+
+검증 대상 커밋은 `700c3390fe712198e8b96a6912c66c3f5479d229`이다. 명령은 커밋 직후
+작업 트리가 비어 있는 상태(`git status --porcelain` 출력 없음)에서 실행했다. 환경은
+macOS 26.6.2, Xcode 26.6(17F113), arm64다.
+
+이 커밋은 표준·스펙 리뷰 round 1(strict, `6851877..d801924`)의 지적 10건 가운데
+SPEC-001~003과 STD-001~007을 반영한 결과다. 앞선 병합 커밋
+`d801924dfebcbed867336aaf49455f561fd3483f`도 같은 환경에서 아래 두 명령을 종료
+코드 0으로 통과했으며, 이번 기록이 그 결과를 대체한다.
+
+| 명령 | 종료 코드·결과 |
+| --- | --- |
+| `xcodebuild test -project apps/macos/Kocro.xcodeproj -scheme Kocro -destination 'platform=macOS'` | 0, 성공. 219개 통과, 실패 0개, 건너뛴 테스트 0개 |
+| `xcodebuild build -project apps/macos/Kocro.xcodeproj -scheme Kocro -configuration Release CODE_SIGN_IDENTITY=-` | 0, 성공 |
+| `git diff --check` | 0 |
+
+2026-09-12 기록의 XCTest 실패(`IDEPseudoTerminalDomain Code: 7`,
+`NSPOSIXErrorDomain Code: 1`)는 이 환경에서 재현되지 않았다. 당시 실행은 하네스의
+`macos-xcode-seatbelt` 격리 환경이었고 이번 실행은 그 밖에서 수행했다. 정확히 어떤
+격리 규칙이 원인이었는지는 여전히 확정하지 않는다. 구현이나 테스트를 바꿔 실패를
+숨기지 않았으며, 제거한 `SettingsValidator.validateTrailing`과
+`EventBatchFactory.make(text:trailing:)`을 검증하던 테스트는 같은 규칙을 제품
+경로(`issues(for:in:)`, `makeSegments(steps:)`)로 확인하도록 다시 썼다.
+
+리뷰 스냅샷은 `.harness/reviews/standalone/6851877b9d70b04dc24d6dd16b56f620fa08d04d/strict/`에
+있으며 저장소에 추가하지 않는다.
+
+### 남은 확인
+
+서명된 앱에서 메뉴 바 아이콘을 눌러 매크로 목록이 표시되는지, 항목 선택으로 매크로가
+실행되는지, 10개를 넘는 경우 하위 메뉴를 탐색할 수 있는지와 VoiceOver 읽기는 이번에
+확인하지 않았다. Release 재빌드로 cdhash가 바뀌므로 Accessibility 권한을 다시 승인해야
+한다. 이 항목들은 실제 앱 검증으로 판정한다.
 
 ## 2026-09-12 issue #15 검토·검증
 
