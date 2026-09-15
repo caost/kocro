@@ -25,6 +25,30 @@ final class MemorySettingsFile: SettingsFile {
     }
 }
 
+/// 레거시 저장 형식을 흉내 내는 테스트 전용 도우미다. 제품 코드는 `steps`를 직접 쓰고
+/// 마이그레이션에만 `MacroStep.legacySteps`를 사용한다.
+extension MacroDefinition {
+    init(id: UUID, title: String = "", isEnabled: Bool,
+         shortcut: ShortcutDefinition, text: String, trailingKey: TrailingKey?) {
+        self.init(id: id, title: title, isEnabled: isEnabled, shortcut: shortcut,
+                  steps: MacroStep.legacySteps(text: text, trailingKey: trailingKey))
+    }
+
+    /// 첫 문자열 단계를 바꾸고, 문자열 단계가 없으면 끝에 추가한다.
+    func withText(_ value: String) -> Self {
+        var copy = self
+        if let index = copy.steps.firstIndex(where: {
+            if case .text = $0.kind { return true }
+            return false
+        }) {
+            copy.steps[index].kind = .text(value)
+        } else {
+            copy.steps.append(.init(kind: .text(value)))
+        }
+        return copy
+    }
+}
+
 enum Fixtures {
     static func macro(
         id: UUID = UUID(),
@@ -162,6 +186,18 @@ final class EventAPISpy: EventAPI {
     }
 }
 
+/// 여러 테스트 더블이 같은 기준으로 게시 요청의 문자열 단계를 확인한다.
+extension Array where Element == ExecutionRequest {
+    var combinedTexts: [String] {
+        map { request in
+            request.steps.compactMap { step -> String? in
+                guard case .text(let value) = step.kind else { return nil }
+                return value
+            }.joined()
+        }
+    }
+}
+
 final class RecordingBatchPoster: BatchPosting {
     private let lock = NSLock()
     private let error: Error?
@@ -172,14 +208,7 @@ final class RecordingBatchPoster: BatchPosting {
     init(error: Error? = nil) { self.error = error }
     var requests: [ExecutionRequest] { locked { requestsStorage } }
     var steps: [[MacroStep]] { requests.map(\.steps) }
-    var texts: [String] {
-        requests.map { request in
-            request.steps.compactMap { step -> String? in
-                guard case .text(let value) = step.kind else { return nil }
-                return value
-            }.joined()
-        }
-    }
+    var texts: [String] { requests.combinedTexts }
     var maximumConcurrent: Int { locked { maximumConcurrentStorage } }
 
     func buildAndPost(_ request: ExecutionRequest) throws {
@@ -211,14 +240,7 @@ final class BlockingPoster: BatchPosting {
 
     var requests: [ExecutionRequest] { locked { requestsStorage } }
     var steps: [[MacroStep]] { requests.map(\.steps) }
-    var texts: [String] {
-        requests.map { request in
-            request.steps.compactMap { step -> String? in
-                guard case .text(let value) = step.kind else { return nil }
-                return value
-            }.joined()
-        }
-    }
+    var texts: [String] { requests.combinedTexts }
     var maximumConcurrent: Int { locked { maximumConcurrentStorage } }
 
     func buildAndPost(_ request: ExecutionRequest) throws {

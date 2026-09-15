@@ -53,8 +53,7 @@ struct MenuBarViewModel {
         registration: [UUID: RegistrationState]
     ) -> [MenuMacroItem] {
         macros.filter {
-            $0.isEnabled && registration[$0.id] == .registered
-                && $0.steps.contains(where: \.isEmitting)
+            $0.isExecutable(registration: registration[$0.id])
         }.map {
             MenuMacroItem(
                 id: $0.id,

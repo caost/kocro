@@ -98,35 +98,60 @@ final class SettingsValidatorTests: XCTestCase {
         XCTAssertThrowsError(try validator.validateShortcut(.init(key: .keyCode(0), modifiers: unsupported)))
     }
 
-    func testTrailingKeyMatrix() {
-        XCTAssertNoThrow(try validator.validateTrailing(.enter))
-        XCTAssertNoThrow(try validator.validateTrailing(.space))
-        XCTAssertNoThrow(try validator.validateTrailing(.tab))
-        XCTAssertNoThrow(try validator.validateTrailing(.custom(keyCode: 0, modifiers: [.shift])))
-        XCTAssertThrowsError(try validator.validateTrailing(.custom(keyCode: nil, modifiers: [.option])))
-        XCTAssertThrowsError(try validator.validateTrailing(.custom(keyCode: 56, modifiers: [])))
-        XCTAssertThrowsError(try validator.validateTrailing(.custom(keyCode: 0, modifiers: ModifierSet(rawValue: 0x10))))
+    /// 레거시 `TrailingKey`는 저장 형식 마이그레이션을 거쳐 키 조합 단계가 되므로,
+    /// 제품 경로와 같게 `legacySteps`로 옮긴 뒤 저장 검증 결과로 판정한다.
+    private func keyStepIssues(_ trailingKey: TrailingKey) -> [ValidationError] {
+        let macro = MacroDefinition(
+            id: UUID(), isEnabled: true, shortcut: .init(key: .function(13), modifiers: []),
+            steps: MacroStep.legacySteps(text: "본문", trailingKey: trailingKey)
+        )
+        let settings = AppSettings(macros: [macro])
+        return validator.issues(for: macro, in: settings)
+    }
+
+    private func assertKeyStepAccepted(_ trailingKey: TrailingKey, line: UInt = #line) {
+        XCTAssertFalse(
+            keyStepIssues(trailingKey).contains { if case .invalidKeyCombination = $0 { return true } else { return false } },
+            "\(trailingKey)", line: line
+        )
+    }
+
+    private func assertKeyStepRejected(_ trailingKey: TrailingKey, line: UInt = #line) {
+        XCTAssertTrue(
+            keyStepIssues(trailingKey).contains { if case .invalidKeyCombination = $0 { return true } else { return false } },
+            "\(trailingKey)", line: line
+        )
+    }
+
+    func testKeyCombinationStepMatrix() {
+        assertKeyStepAccepted(.enter)
+        assertKeyStepAccepted(.space)
+        assertKeyStepAccepted(.tab)
+        assertKeyStepAccepted(.custom(keyCode: 0, modifiers: [.shift]))
+        assertKeyStepRejected(.custom(keyCode: nil, modifiers: [.option]))
+        assertKeyStepRejected(.custom(keyCode: 56, modifiers: []))
+        assertKeyStepRejected(.custom(keyCode: 0, modifiers: ModifierSet(rawValue: 0x10)))
         for number in 21...35 {
-            XCTAssertThrowsError(try validator.validateTrailing(.customFunction(number)))
+            assertKeyStepRejected(.customFunction(number))
         }
     }
 
     func testRawKeyPolicyRejectsVolumeKeysAndAcceptsEveryKeypadDigit() {
         for volumeKeyCode: UInt16 in [72, 73, 74] {
             XCTAssertThrowsError(try validator.validateShortcut(.init(key: .keyCode(volumeKeyCode), modifiers: .command)))
-            XCTAssertThrowsError(try validator.validateTrailing(.custom(keyCode: volumeKeyCode, modifiers: [])))
+            assertKeyStepRejected(.custom(keyCode: volumeKeyCode, modifiers: []))
         }
         let keypadDigits: [UInt16] = [82, 83, 84, 85, 86, 87, 88, 89, 91, 92]
         for keyCode in keypadDigits {
             XCTAssertNoThrow(try validator.validateShortcut(.init(key: .keyCode(keyCode), modifiers: .control)))
-            XCTAssertNoThrow(try validator.validateTrailing(.custom(keyCode: keyCode, modifiers: [])))
+            assertKeyStepAccepted(.custom(keyCode: keyCode, modifiers: []))
         }
     }
 
     func testRawKeyPolicyAcceptsStableJISKeys() {
         for keyCode: UInt16 in [93, 94, 95] {
             XCTAssertNoThrow(try validator.validateShortcut(.init(key: .keyCode(keyCode), modifiers: .command)))
-            XCTAssertNoThrow(try validator.validateTrailing(.custom(keyCode: keyCode, modifiers: [])))
+            assertKeyStepAccepted(.custom(keyCode: keyCode, modifiers: []))
         }
     }
 

@@ -59,7 +59,7 @@ final class ExecutionSnapshotStore: @unchecked Sendable {
         registration: [UUID: RegistrationState]
     ) {
         let registered = macros.filter {
-            $0.isEnabled && registration[$0.id] == .registered
+            $0.isExecutable(registration: registration[$0.id])
         }
         lock.lock()
         values = Dictionary(uniqueKeysWithValues: registered.map { ($0.id, $0) })
@@ -78,7 +78,8 @@ final class ExecutionSnapshotStore: @unchecked Sendable {
     ) -> ExecutionRequest? {
         lock.lock()
         defer { lock.unlock() }
-        guard let macro = values[id], macro.steps.contains(where: \.isEmitting) else { return nil }
+        // replace가 isExecutable로 걸러 저장하므로 여기서 같은 조건을 다시 판정하지 않는다.
+        guard let macro = values[id] else { return nil }
         return ExecutionRequest(
             id: id,
             shortcut: macro.shortcut.displayName,
