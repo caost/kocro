@@ -47,12 +47,26 @@ SPEC-001~003과 STD-001~007을 반영한 결과다. 앞선 병합 커밋
 리뷰 스냅샷은 `.harness/reviews/standalone/6851877b9d70b04dc24d6dd16b56f620fa08d04d/strict/`에
 있으며 저장소에 추가하지 않는다.
 
+### 실제 앱 확인
+
+`35f497c`를 대상으로 Release 빌드(`CODE_SIGN_IDENTITY=-`)한 `Kocro.app`을 `Kocro 0.1.2`
+볼륨의 DMG로 묶어 사용자에게 전달했다. 앱 버전은 0.1.2(빌드 0.1.2), 번들 식별자는
+`com.caost.Kocro`, `LSMinimumSystemVersion`은 13.0이다. 서명은 ad hoc과 Hardened
+Runtime(`flags=0x10002(adhoc,runtime)`)이며 `codesign --verify --strict`를 빌드 산출물과
+DMG에서 마운트한 사본 양쪽에서 통과했다. `hdiutil verify` checksum도 VALID다.
+
+사용자가 이 DMG로 설치한 앱을 실행해 **메뉴 바 매크로 목록과 목록에서의 실행이 의도대로
+동작한다고 확인했다.** 확인 주체는 사용자이며 이 문서 작성자가 관찰한 기록이 아니다.
+항목별 관찰값(빈 목록 문구, 10개 초과 시 하위 메뉴 경계, 비활성 항목 제외)은 개별로
+보고받지 않았으므로 세부 판정으로 기록하지 않는다.
+
+전달한 앱은 Developer ID 서명과 notarization이 없어 Gatekeeper 최초 실행 차단을 우회해야
+했고, cdhash가 바뀌어 Accessibility 권한을 다시 승인한 상태에서 확인했다.
+
 ### 남은 확인
 
-서명된 앱에서 메뉴 바 아이콘을 눌러 매크로 목록이 표시되는지, 항목 선택으로 매크로가
-실행되는지, 10개를 넘는 경우 하위 메뉴를 탐색할 수 있는지와 VoiceOver 읽기는 이번에
-확인하지 않았다. Release 재빌드로 cdhash가 바뀌므로 Accessibility 권한을 다시 승인해야
-한다. 이 항목들은 실제 앱 검증으로 판정한다.
+VoiceOver 읽기와 키보드만으로의 하위 메뉴 탐색은 확인하지 않았다. 정식 배포 서명과
+notarization을 적용한 빌드에서의 동작도 미판정이다.
 
 ## 2026-09-12 issue #15 검토·검증
 
